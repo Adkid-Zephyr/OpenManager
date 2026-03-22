@@ -1,0 +1,999 @@
+#!/usr/bin/env node
+
+import { readFile, writeFile, mkdir, readdir, rm, rename } from 'fs/promises';
+import { join } from 'path';
+import { homedir } from 'os';
+import { existsSync } from 'fs';
+import http from 'http';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
+
+const PROJECTS_DIR = join(homedir(), '.openclaw', 'workspace', 'projects');
+const INDEX_FILE = join(PROJECTS_DIR, '.projects-index.json');
+const PORT = 3456;
+
+// 确保项目目录存在
+async function ensureProjectsDir() {
+  if (!existsSync(PROJECTS_DIR)) {
+    await mkdir(PROJECTS_DIR, { recursive: true });
+  }
+  if (!existsSync(INDEX_FILE)) {
+    await writeFile(INDEX_FILE, JSON.stringify({ projects: [], currentProject: null }, null, 2));
+  }
+}
+
+// 读取索引
+async function readIndex() {
+  await ensureProjectsDir();
+  const content = await readFile(INDEX_FILE, 'utf-8');
+  return JSON.parse(content);
+}
+
+// 写入索引
+async function writeIndex(index) {
+  await writeFile(INDEX_FILE, JSON.stringify(index, null, 2));
+}
+
+// API 处理函数
+const handlers = {
+  // 获取所有项目
+  'GET /api/projects': async () => {
+    const index = await readIndex();
+    const projectsWithDetails = await Promise.all(
+      index.projects.map(async (p) => {
+        const configPath = join(p.path, '.project.json');
+        const tasksPath = join(p.path, 'tasks', 'tasks.json');
+        const memoryDir = join(p.path, 'memory');
+        
+        let sessions = 0;
+        let tasks = { pending: 0, completed: 0 };
+        
+        if (existsSync(memoryDir)) {
+          const files = await readdir(memoryDir);
+          sessions = files.filter(f => f.endsWith('.md')).length;
+        }
+        
+        if (existsSync(tasksPath)) {
+          const tasksData = JSON.parse(await readFile(tasksPath, 'utf-8'));
+          tasks.pending = tasksData.tasks.filter(t => !t.completed).length;
+          tasks.completed = tasksData.tasks.filter(t => t.completed).length;
+        }
+        
+        return { ...p, sessions, tasks };
+      })
+    );
+    
+    return { projects: projectsWithDetails, currentProject: index.currentProject };
+  },
+  
+  // 创建项目
+  'POST /api/projects': async (body) => {
+    const { name, description } = body;
+    const index = await readIndex();
+    
+    if (index.projects.find(p => p.name === name)) {
+      throw new Error('项目已存在');
+    }
+    
+    const projectDir = join(PROJECTS_DIR, name);
+    const memoryDir = join(projectDir, 'memory');
+    const tasksDir = join(projectDir, 'tasks');
+    
+    await mkdir(projectDir, { recursive: true });
+    await mkdir(memoryDir, { recursive: true });
+    await mkdir(tasksDir, { recursive: true });
+    
+    const config = {
+      name,
+      description: description || `${name} 项目`,
+      createdAt: new Date().toISOString(),
+      currentSession: null,
+      model: 'qwen3.5-plus',
+      tags: []
+    };
+    
+    await writeFile(join(projectDir, '.project.json'), JSON.stringify(config, null, 2));
+    
+    const sharedMemory = `# ${name} - 共享记忆\n\n## 项目目标\n\n\n## 架构设计\n\n\n## 关键决策\n\n\n## 通用知识\n\n`;
+    await writeFile(join(memoryDir, 'shared.md'), sharedMemory);
+    
+    await writeFile(join(tasksDir, 'tasks.json'), JSON.stringify({ tasks: [], nextId: 1 }, null, 2));
+    
+    index.projects.push({ name, description, path: projectDir, createdAt: config.createdAt, sessions: 0 });
+    index.currentProject = name;
+    await writeIndex(index);
+    
+    return { success: true, project: config };
+  },
+  
+  // 切换项目
+  'POST /api/projects/:name/switch': async (body, params) => {
+    const { name } = params;
+    const index = await readIndex();
+    
+    const project = index.projects.find(p => p.name === name);
+    if (!project) throw new Error('项目不存在');
+    
+    index.currentProject = name;
+    await writeIndex(index);
+    
+    return { success: true, currentProject: name };
+  },
+  
+  // 获取项目详情
+  'GET /api/projects/:name': async (body, params) => {
+    const { name } = params;
+    const index = await readIndex();
+    const project = index.projects.find(p => p.name === name);
+    
+    if (!project) throw new Error('项目不存在');
+    
+    const configPath = join(project.path, '.project.json');
+    const config = existsSync(configPath) ? JSON.parse(await readFile(configPath, 'utf-8')) : null;
+    
+    return { ...project, config };
+  },
+  
+  // 删除项目
+  'DELETE /api/projects/:name': async (body, params) => {
+    const { name } = params;
+    const index = await readIndex();
+    
+    const projectIdx = index.projects.findIndex(p => p.name === name);
+    if (projectIdx === -1) throw new Error('项目不存在');
+    
+    const project = index.projects[projectIdx];
+    
+    // 删除项目文件夹
+    await rm(project.path, { recursive: true, force: true });
+    
+    // 从索引中移除
+    index.projects.splice(projectIdx, 1);
+    if (index.currentProject === name) {
+      index.currentProject = index.projects.length > 0 ? index.projects[0].name : null;
+    }
+    await writeIndex(index);
+    
+    return { success: true };
+  },
+  
+  // 重命名项目
+  'POST /api/projects/:name/rename': async (body, params) => {
+    const { name } = params;
+    const { newName } = body;
+    const index = await readIndex();
+    
+    const projectIdx = index.projects.findIndex(p => p.name === name);
+    if (projectIdx === -1) throw new Error('项目不存在');
+    
+    if (index.projects.find(p => p.name === newName)) {
+      throw new Error('新名称已存在');
+    }
+    
+    const project = index.projects[projectIdx];
+    const oldPath = project.path;
+    const newPath = join(PROJECTS_DIR, newName);
+    
+    // 重命名文件夹
+    await rm(newPath, { recursive: true, force: true });
+    await rename(oldPath, newPath);
+    
+    // 更新索引
+    index.projects[projectIdx].name = newName;
+    index.projects[projectIdx].path = newPath;
+    if (index.currentProject === name) {
+      index.currentProject = newName;
+    }
+    await writeIndex(index);
+    
+    // 更新项目配置
+    const configPath = join(newPath, '.project.json');
+    if (existsSync(configPath)) {
+      const config = JSON.parse(await readFile(configPath, 'utf-8'));
+      config.name = newName;
+      await writeFile(configPath, JSON.stringify(config, null, 2));
+    }
+    
+    return { success: true, newName };
+  },
+  
+  // 导出项目
+  'GET /api/projects/:name/export': async (body, params) => {
+    const { name } = params;
+    const index = await readIndex();
+    const project = index.projects.find(p => p.name === name);
+    
+    if (!project) throw new Error('项目不存在');
+    
+    const exportData = {
+      name,
+      exportedAt: new Date().toISOString(),
+      config: null,
+      sessions: [],
+      tasks: []
+    };
+    
+    // 读取配置
+    const configPath = join(project.path, '.project.json');
+    if (existsSync(configPath)) {
+      exportData.config = JSON.parse(await readFile(configPath, 'utf-8'));
+    }
+    
+    // 读取会话记忆
+    const memoryDir = join(project.path, 'memory');
+    if (existsSync(memoryDir)) {
+      const files = await readdir(memoryDir);
+      for (const file of files) {
+        if (file.endsWith('.md')) {
+          const content = await readFile(join(memoryDir, file), 'utf-8');
+          exportData.sessions.push({ file, content });
+        }
+      }
+    }
+    
+    // 读取任务
+    const tasksPath = join(project.path, 'tasks', 'tasks.json');
+    if (existsSync(tasksPath)) {
+      exportData.tasks = JSON.parse(await readFile(tasksPath, 'utf-8'));
+    }
+    
+    return { export: exportData };
+  },
+  
+  // 重命名会话
+  'POST /api/projects/:name/sessions/:sessionId/rename': async (body, params) => {
+    const { name, sessionId } = params;
+    const { newName } = body;
+    const index = await readIndex();
+    const project = index.projects.find(p => p.name === name);
+    
+    if (!project) throw new Error('项目不存在');
+    
+    const memoryDir = join(project.path, 'memory');
+    const oldPath = join(memoryDir, `${sessionId}.md`);
+    const newPath = join(memoryDir, `${newName}.md`);
+    
+    if (!existsSync(oldPath)) throw new Error('会话不存在');
+    
+    // 重命名文件
+    await rm(newPath, { recursive: true, force: true });
+    await rename(oldPath, newPath);
+    
+    // 更新项目配置
+    const configPath = join(project.path, '.project.json');
+    const config = JSON.parse(await readFile(configPath, 'utf-8'));
+    if (config.currentSession === sessionId) {
+      config.currentSession = newName;
+      await writeFile(configPath, JSON.stringify(config, null, 2));
+    }
+    
+    return { success: true, newName };
+  },
+  
+  // OpenClaw 聊天
+  'POST /api/openclaw/chat': async (body) => {
+    const { project, session, message } = body;
+    
+    // 调用 OpenClaw CLI
+    try {
+      const { spawn } = await import('child_process');
+      
+      // 获取当前工作目录
+      const workspaceDir = join(homedir(), '.openclaw', 'workspace');
+      const homeDir = process.env.HOME || homedir();
+      
+      console.log(`[OpenClaw] Chat request: project=${project}, session=${session}, message=${message.substring(0, 50)}...`);
+      
+      return new Promise((resolve) => {
+        // 使用 spawn 而不是 exec，更好地处理输出
+        // 添加 --json 参数确保输出 JSON 格式
+        // 使用 --thinking minimal 减少不必要的输出
+        const child = spawn('openclaw', ['agent', '--session-id', session, '--message', message, '--json', '--thinking', 'minimal'], {
+          cwd: workspaceDir,
+          env: { ...process.env, HOME: homeDir },
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+        
+        let stdout = '';
+        let stderr = '';
+        let hasJsonResult = false;
+        
+        // 更长的超时时间（120 秒），因为 OpenClaw 可能需要时间思考
+        const timer = setTimeout(() => {
+          console.log('[OpenClaw] Request timeout after 120s');
+          child.kill('SIGTERM');
+          resolve({ 
+            response: '⚠️ OpenClaw 响应超时\n\n消息已记录在本地记忆中，但 OpenClaw 未在 120 秒内响应。\n\n可能原因：\n- 模型响应较慢\n- 网关队列拥堵\n- 网络问题\n\n建议：\n- 稍后再试\n- 检查 `openclaw gateway status`\n- 查看日志了解详细进度',
+            connected: false,
+            timedOut: true
+          });
+        }, 120000);
+        
+        child.stdout.on('data', (data) => {
+          const chunk = data.toString();
+          stdout += chunk;
+          console.log(`[OpenClaw] stdout chunk: ${chunk.substring(0, 100)}...`);
+          
+          // 检查是否有 JSON 结果
+          if (chunk.includes('"status": "ok"') || chunk.includes('"payloads"')) {
+            hasJsonResult = true;
+          }
+        });
+        
+        child.stderr.on('data', (data) => {
+          const chunk = data.toString();
+          stderr += chunk;
+          console.error(`[OpenClaw] stderr: ${chunk}`);
+        });
+        
+        child.on('close', (code) => {
+          clearTimeout(timer);
+          console.log(`[OpenClaw] Process closed with code ${code}, stdout=${stdout.length} chars, hasJson=${hasJsonResult}`);
+          
+          if (code !== 0 && !hasJsonResult && stderr.trim()) {
+            resolve({ 
+              response: `⚠️ OpenClaw 错误\n\n${stderr.trim()}\n\n排查步骤：\n1. 确认网关运行中：\`openclaw gateway status\`\n2. 检查模型配置：\`openclaw config get model\`\n3. 确保有可用的 API 密钥`,
+              connected: false,
+              error: stderr 
+            });
+            return;
+          }
+          
+          // 尝试从输出中提取 JSON
+          try {
+            const jsonMatch = stdout.match(/\{[\s\S]*"status"[\s\S]*\}/);
+            if (jsonMatch) {
+              const result = JSON.parse(jsonMatch[0]);
+              const response = result.result?.payloads?.[0]?.text || result.response || result.message || stdout;
+              
+              // 提取 tool calls 信息
+              const toolCalls = [];
+              if (result.result?.toolCalls && Array.isArray(result.result.toolCalls)) {
+                result.result.toolCalls.forEach(tc => {
+                  toolCalls.push({
+                    name: tc.name || tc.tool || 'unknown',
+                    args: tc.args || tc.parameters || {}
+                  });
+                });
+              }
+              
+              console.log(`[OpenClaw] Parsed JSON response (${response.length} chars), toolCalls: ${toolCalls.length}`);
+              resolve({ 
+                response, 
+                connected: true, 
+                meta: result.result?.meta,
+                toolCalls
+              });
+              return;
+            }
+          } catch (e) {
+            console.log('[OpenClaw] JSON parse failed, using raw output');
+          }
+          
+          // 降级：使用原始输出
+          const response = stdout.trim() || 'OpenClaw 已处理（无输出）';
+          console.log(`[OpenClaw] Using raw response (${response.length} chars)`);
+          resolve({ response, connected: true });
+        });
+        
+        child.on('error', (err) => {
+          clearTimeout(timer);
+          console.error('[OpenClaw] Spawn error:', err.message);
+          resolve({ 
+            response: `⚠️ OpenClaw 启动失败\n\n${err.message}\n\n请确认 OpenClaw 已正确安装且在 PATH 中。`,
+            connected: false,
+            error: err.message 
+          });
+        });
+      });
+    } catch (e) {
+      console.error('[OpenClaw] Integration error:', e.message);
+      
+      return { 
+        response: `⚠️ OpenClaw 连接失败\n\n${e.message}\n\n排查步骤：\n1. 确认 OpenClaw 已安装：\`openclaw --version\`\n2. 确认网关运行中：\`openclaw gateway status\`\n3. 检查模型配置：\`openclaw config get model\``,
+        connected: false,
+        error: e.message
+      };
+    }
+  },
+  
+  // 获取 OpenClaw 日志
+  'GET /api/openclaw/logs': async () => {
+    try {
+      const { exec } = await import('child_process');
+      const { promisify } = await import('util');
+      const execAsync = promisify(exec);
+      
+      // 读取最新的 OpenClaw 日志
+      const logPath = '/tmp/openclaw/openclaw-' + new Date().toISOString().split('T')[0] + '.log';
+      
+      const { stdout } = await execAsync(`tail -100 "${logPath}" 2>/dev/null || echo "日志文件不存在或为空"`, {
+        timeout: 5000
+      });
+      
+      // 解析日志行
+      const lines = stdout.split('\n').filter(line => line.trim());
+      const parsedLogs = lines.map(line => {
+        try {
+          const log = JSON.parse(line);
+          return {
+            time: log.time,
+            level: log._meta?.logLevelName || 'INFO',
+            message: log[0] || JSON.stringify(log),
+            raw: line
+          };
+        } catch (e) {
+          return {
+            time: new Date().toISOString(),
+            level: 'INFO',
+            message: line,
+            raw: line
+          };
+        }
+      }).reverse(); // 最新的在前
+      
+      return { logs: parsedLogs, logPath };
+    } catch (e) {
+      return { logs: [], error: e.message };
+    }
+  },
+  
+  // 上传文件（图片/语音）
+  'POST /api/upload': async (body) => {
+    const { filename, content, mimeType, project, session } = body;
+    
+    try {
+      const index = await readIndex();
+      const projectObj = index.projects.find(p => p.name === project);
+      
+      if (!projectObj) {
+        throw new Error('项目不存在');
+      }
+      
+      // 创建 uploads 目录
+      const uploadsDir = join(projectObj.path, 'uploads');
+      if (!existsSync(uploadsDir)) {
+        await mkdir(uploadsDir, { recursive: true });
+      }
+      
+      // 生成唯一文件名
+      const timestamp = Date.now();
+      const ext = mimeType.split('/')[1] || 'bin';
+      const safeFilename = `${timestamp}-${filename.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      const filePath = join(uploadsDir, safeFilename);
+      
+      // 解码并保存文件
+      const buffer = Buffer.from(content.split(',')[1] || content, 'base64');
+      await writeFile(filePath, buffer);
+      
+      console.log(`[Upload] Saved file: ${filePath}`);
+      
+      return {
+        success: true,
+        filename: safeFilename,
+        path: filePath,
+        url: `/api/files/${project}/${safeFilename}`,
+        mimeType
+      };
+    } catch (e) {
+      console.error('[Upload] Error:', e.message);
+      throw e;
+    }
+  },
+  
+  // 获取项目文件列表（包括 uploads 和项目根目录）
+  'GET /api/projects/:name/files': async (body, params) => {
+    const { name } = params;
+    const { path = '' } = body;
+    
+    try {
+      const index = await readIndex();
+      const project = index.projects.find(p => p.name === name);
+      
+      if (!project) {
+        throw new Error('项目不存在');
+      }
+      
+      const basePath = join(project.path, path || '');
+      
+      if (!existsSync(basePath)) {
+        return { files: [], folders: [], currentPath: path };
+      }
+      
+      const items = await readdir(basePath);
+      const files = [];
+      const folders = [];
+      
+      for (const item of items) {
+        // 跳过隐藏文件和配置文件夹
+        if (item.startsWith('.') || item === 'memory' || item === 'tasks') continue;
+        
+        const itemPath = join(basePath, item);
+        const stats = await require('fs/promises').stat(itemPath);
+        
+        const fileInfo = {
+          name: item,
+          path: path ? `${path}/${item}` : item,
+          size: stats.size,
+          updatedAt: stats.mtime,
+          isDirectory: stats.isDirectory()
+        };
+        
+        if (stats.isDirectory()) {
+          folders.push(fileInfo);
+        } else {
+          files.push(fileInfo);
+        }
+      }
+      
+      return {
+        files,
+        folders,
+        currentPath: path,
+        projectPath: project.path
+      };
+    } catch (e) {
+      console.error('[Files] Error:', e.message);
+      throw e;
+    }
+  },
+  
+  // 获取上传的文件
+  'GET /api/files/:project/:filename': async (body, params) => {
+    const { project, filename } = params;
+    
+    try {
+      const index = await readIndex();
+      const projectObj = index.projects.find(p => p.name === project);
+      
+      if (!projectObj) {
+        throw new Error('项目不存在');
+      }
+      
+      const filePath = join(projectObj.path, 'uploads', filename);
+      
+      if (!existsSync(filePath)) {
+        throw new Error('文件不存在');
+      }
+      
+      const content = await readFile(filePath);
+      const ext = filename.split('.').pop()?.toLowerCase();
+      
+      const mimeTypes = {
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
+        'mp3': 'audio/mpeg',
+        'wav': 'audio/wav',
+        'ogg': 'audio/ogg',
+        'm4a': 'audio/mp4',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls': 'application/vnd.ms-excel',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'ppt': 'application/vnd.ms-powerpoint',
+        'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'pdf': 'application/pdf',
+        'txt': 'text/plain',
+        'md': 'text/markdown',
+        'csv': 'text/csv'
+      };
+      
+      return {
+        content: content.toString('base64'),
+        mimeType: mimeTypes[ext] || 'application/octet-stream',
+        filename
+      };
+    } catch (e) {
+      throw e;
+    }
+  },
+  
+  // OpenClaw 压缩记忆
+  'POST /api/openclaw/compress': async (body) => {
+    const { entries, project, session } = body;
+    
+    // 分离用户和助手消息
+    const userMessages = entries.filter(e => e.type === 'user').map(e => e.text);
+    const assistantMessages = entries.filter(e => e.type === 'assistant').map(e => e.text);
+    
+    // 计算时间范围
+    const startTime = entries[0]?.time ? new Date(entries[0].time).toLocaleString('zh-CN') : '未知';
+    const endTime = entries[entries.length-1]?.time ? new Date(entries[entries.length-1].time).toLocaleString('zh-CN') : '未知';
+    
+    // 尝试使用 OpenClaw 进行 AI 压缩
+    try {
+      const { exec } = await import('child_process');
+      const { promisify } = await import('util');
+      const execAsync = promisify(exec);
+      
+      // 构建压缩提示
+      const compressPrompt = `请总结以下对话，提取关键信息和决策：
+
+用户问题：
+${userMessages.map(m => `- ${m}`).join('\n')}
+
+AI 响应要点：
+${assistantMessages.map(m => `- ${m}`).join('\n')}
+
+请用简洁的中文总结核心内容，包括：
+1. 主要讨论的话题
+2. 达成的结论或决策
+3. 待办事项或后续步骤
+4. 重要技术细节`;
+
+      // 尝试调用 OpenClaw 进行总结
+      const cmd = `echo "${compressPrompt.replace(/"/g, '\\"')}" | openclaw --prompt -`;
+      
+      const { stdout } = await execAsync(cmd, { timeout: 30000 });
+      
+      if (stdout && stdout.trim().length > 0) {
+        return { 
+          summary: `## 📝 AI 对话总结\n\n${stdout.trim()}\n\n---\n**压缩时间**: ${new Date().toLocaleString('zh-CN')}\n**原始记录数**: ${entries.length}`,
+          method: 'openclaw-ai'
+        };
+      }
+    } catch (e) {
+      console.log('OpenClaw AI compression not available, using fallback:', e.message);
+    }
+    
+    // 降级方案：结构化总结
+    const keyTopics = [...new Set(userMessages.map(m => m.split(/[?？.]/)[0].trim()).filter(t => t.length > 3))];
+    
+    const summary = `## 📋 对话摘要
+
+### 讨论主题
+${keyTopics.slice(0, 5).map(t => `- ${t}`).join('\n') || '- 未识别明确主题'}
+
+### 用户提问 (${userMessages.length}条)
+${userMessages.slice(-5).map(m => `- ${m}`).join('\n')}
+
+### AI 响应要点 (${assistantMessages.length}条)
+${assistantMessages.slice(-5).map(m => `- ${m}`).join('\n')}
+
+---
+**压缩时间**: ${new Date().toLocaleString('zh-CN')}  
+**时间范围**: ${startTime} - ${endTime}  
+**原始记录数**: ${entries.length}条`;
+    
+    return { summary, method: 'fallback' };
+  },
+  
+  // 获取会话列表
+  'GET /api/projects/:name/sessions': async (body, params) => {
+    const { name } = params;
+    const index = await readIndex();
+    const project = index.projects.find(p => p.name === name);
+    
+    if (!project) throw new Error('项目不存在');
+    
+    const memoryDir = join(project.path, 'memory');
+    if (!existsSync(memoryDir)) return { sessions: [], currentSession: null };
+    
+    const files = await readdir(memoryDir);
+    const sessions = files
+      .filter(f => f.endsWith('.md'))
+      .map(f => ({ id: f.replace('.md', ''), name: f.replace('.md', ''), file: f }));
+    
+    const configPath = join(project.path, '.project.json');
+    const config = JSON.parse(await readFile(configPath, 'utf-8'));
+    
+    return { sessions, currentSession: config.currentSession };
+  },
+  
+  // 创建会话
+  'POST /api/projects/:name/sessions': async (body, params) => {
+    const { name } = params;
+    const { sessionName } = body;
+    const index = await readIndex();
+    const project = index.projects.find(p => p.name === name);
+    
+    if (!project) throw new Error('项目不存在');
+    
+    const memoryDir = join(project.path, 'memory');
+    const sessionId = `session-${Date.now()}`;
+    const displayName = sessionName || sessionId;
+    
+    const sessionMemory = `# ${displayName}\n\n## 对话记录\n\n${new Date().toLocaleString('zh-CN')} - 会话创建\n\n## 待办\n\n\n## 笔记\n\n`;
+    await writeFile(join(memoryDir, `${sessionId}.md`), sessionMemory);
+    
+    const configPath = join(project.path, '.project.json');
+    const config = JSON.parse(await readFile(configPath, 'utf-8'));
+    config.currentSession = sessionId;
+    await writeFile(configPath, JSON.stringify(config, null, 2));
+    
+    return { success: true, sessionId, displayName };
+  },
+  
+  // 切换会话
+  'POST /api/projects/:name/sessions/:sessionId/switch': async (body, params) => {
+    const { name, sessionId } = params;
+    const index = await readIndex();
+    const project = index.projects.find(p => p.name === name);
+    
+    if (!project) throw new Error('项目不存在');
+    
+    const memoryDir = join(project.path, 'memory');
+    const sessionFile = join(memoryDir, `${sessionId}.md`);
+    
+    if (!existsSync(sessionFile)) throw new Error('会话不存在');
+    
+    const configPath = join(project.path, '.project.json');
+    const config = JSON.parse(await readFile(configPath, 'utf-8'));
+    config.currentSession = sessionId;
+    await writeFile(configPath, JSON.stringify(config, null, 2));
+    
+    return { success: true, currentSession: sessionId };
+  },
+  
+  // 获取会话记忆
+  'GET /api/projects/:name/sessions/:sessionId/memory': async (body, params) => {
+    const { name, sessionId } = params;
+    const index = await readIndex();
+    const project = index.projects.find(p => p.name === name);
+    
+    if (!project) throw new Error('项目不存在');
+    
+    const memoryPath = join(project.path, 'memory', `${sessionId}.md`);
+    if (!existsSync(memoryPath)) throw new Error('会话记忆不存在');
+    
+    const content = await readFile(memoryPath, 'utf-8');
+    return { content };
+  },
+  
+  // 更新会话记忆
+  'POST /api/projects/:name/sessions/:sessionId/memory': async (body, params) => {
+    const { name, sessionId } = params;
+    const { content } = body;
+    const index = await readIndex();
+    const project = index.projects.find(p => p.name === name);
+    
+    if (!project) throw new Error('项目不存在');
+    
+    const memoryPath = join(project.path, 'memory', `${sessionId}.md`);
+    if (!existsSync(memoryPath)) throw new Error('会话记忆不存在');
+    
+    await writeFile(memoryPath, content);
+    return { success: true };
+  },
+  
+  // 删除会话
+  'DELETE /api/projects/:name/sessions/:sessionId': async (body, params) => {
+    const { name, sessionId } = params;
+    const index = await readIndex();
+    const project = index.projects.find(p => p.name === name);
+    
+    if (!project) throw new Error('项目不存在');
+    
+    const memoryPath = join(project.path, 'memory', `${sessionId}.md`);
+    if (!existsSync(memoryPath)) throw new Error('会话不存在');
+    
+    await rm(memoryPath);
+    
+    // 如果删除的是当前会话，清除配置
+    const configPath = join(project.path, '.project.json');
+    const config = JSON.parse(await readFile(configPath, 'utf-8'));
+    if (config.currentSession === sessionId) {
+      config.currentSession = null;
+      await writeFile(configPath, JSON.stringify(config, null, 2));
+    }
+    
+    return { success: true };
+  },
+  
+  // 获取任务列表
+  'GET /api/projects/:name/tasks': async (body, params) => {
+    const { name } = params;
+    const index = await readIndex();
+    const project = index.projects.find(p => p.name === name);
+    
+    if (!project) throw new Error('项目不存在');
+    
+    const tasksPath = join(project.path, 'tasks', 'tasks.json');
+    if (!existsSync(tasksPath)) return { tasks: [], nextId: 1 };
+    
+    const tasksData = JSON.parse(await readFile(tasksPath, 'utf-8'));
+    return tasksData;
+  },
+  
+  // 添加任务
+  'POST /api/projects/:name/tasks': async (body, params) => {
+    const { name } = params;
+    const { description } = body;
+    const index = await readIndex();
+    const project = index.projects.find(p => p.name === name);
+    
+    if (!project) throw new Error('项目不存在');
+    
+    const tasksPath = join(project.path, 'tasks', 'tasks.json');
+    let tasksData;
+    
+    if (existsSync(tasksPath)) {
+      tasksData = JSON.parse(await readFile(tasksPath, 'utf-8'));
+    } else {
+      tasksData = { tasks: [], nextId: 1 };
+    }
+    
+    const maxId = tasksData.tasks.reduce((max, t) => Math.max(max, t.id), 0);
+    const newId = Math.max(maxId + 1, tasksData.nextId);
+    
+    const task = {
+      id: newId,
+      description,
+      createdAt: new Date().toISOString(),
+      completed: false
+    };
+    
+    tasksData.tasks.push(task);
+    tasksData.nextId = newId + 1;
+    await writeFile(tasksPath, JSON.stringify(tasksData, null, 2));
+    
+    return { success: true, task };
+  },
+  
+  // 切换任务状态
+  'POST /api/projects/:name/tasks/:id/toggle': async (body, params) => {
+    const { name, id } = params;
+    const index = await readIndex();
+    const project = index.projects.find(p => p.name === name);
+    
+    if (!project) throw new Error('项目不存在');
+    
+    const tasksPath = join(project.path, 'tasks', 'tasks.json');
+    const tasksData = JSON.parse(await readFile(tasksPath, 'utf-8'));
+    const task = tasksData.tasks.find(t => t.id === parseInt(id));
+    
+    if (!task) throw new Error('任务不存在');
+    
+    task.completed = !task.completed;
+    if (task.completed) {
+      task.completedAt = new Date().toISOString();
+    }
+    
+    await writeFile(tasksPath, JSON.stringify(tasksData, null, 2));
+    return { success: true, task };
+  },
+  
+  // 删除任务
+  'DELETE /api/projects/:name/tasks/:id': async (body, params) => {
+    const { name, id } = params;
+    const index = await readIndex();
+    const project = index.projects.find(p => p.name === name);
+    
+    if (!project) throw new Error('项目不存在');
+    
+    const tasksPath = join(project.path, 'tasks', 'tasks.json');
+    const tasksData = JSON.parse(await readFile(tasksPath, 'utf-8'));
+    const taskIdx = tasksData.tasks.findIndex(t => t.id === parseInt(id));
+    
+    if (taskIdx === -1) throw new Error('任务不存在');
+    
+    tasksData.tasks.splice(taskIdx, 1);
+    await writeFile(tasksPath, JSON.stringify(tasksData, null, 2));
+    
+    return { success: true };
+  },
+  
+  // 获取共享记忆
+  'GET /api/projects/:name/memory/shared': async (body, params) => {
+    const { name } = params;
+    const index = await readIndex();
+    const project = index.projects.find(p => p.name === name);
+    
+    if (!project) throw new Error('项目不存在');
+    
+    const memoryPath = join(project.path, 'memory', 'shared.md');
+    if (!existsSync(memoryPath)) return { content: '' };
+    
+    const content = await readFile(memoryPath, 'utf-8');
+    return { content };
+  },
+  
+  // 更新共享记忆
+  'POST /api/projects/:name/memory/shared': async (body, params) => {
+    const { name } = params;
+    const { content } = body;
+    const index = await readIndex();
+    const project = index.projects.find(p => p.name === name);
+    
+    if (!project) throw new Error('项目不存在');
+    
+    const memoryPath = join(project.path, 'memory', 'shared.md');
+    await writeFile(memoryPath, content);
+    
+    return { success: true };
+  }
+};
+
+// 创建 HTTP 服务器
+const server = http.createServer(async (req, res) => {
+  // CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+  
+  // 静态文件服务
+  if (req.url === '/' || req.url === '/app.html') {
+    try {
+      const appPath = join(process.cwd(), 'app.html');
+      const content = await readFile(appPath, 'utf-8');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(content);
+    } catch (e) {
+      res.writeHead(404);
+      res.end('App not found');
+    }
+    return;
+  }
+  
+  // API 路由匹配
+  let handler = null;
+  let params = {};
+  
+  for (const [route, _] of Object.entries(handlers)) {
+    const [method, path] = route.split(' ');
+    if (req.method !== method) continue;
+    
+    const pathParts = path.split('/');
+    const urlParts = decodeURIComponent(req.url).split('?')[0].split('/');
+    
+    if (pathParts.length !== urlParts.length) continue;
+    
+    let match = true;
+    for (let i = 0; i < pathParts.length; i++) {
+      if (pathParts[i].startsWith(':')) {
+        params[pathParts[i].slice(1)] = urlParts[i];
+      } else if (pathParts[i] !== urlParts[i]) {
+        match = false;
+        break;
+      }
+    }
+    
+    if (match) {
+      handler = handlers[route];
+      break;
+    }
+  }
+  
+  if (!handler) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Not found' }));
+    return;
+  }
+  
+  try {
+    let body = {};
+    if (req.method === 'POST' || req.method === 'DELETE') {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const raw = Buffer.concat(chunks).toString();
+      if (raw) body = JSON.parse(raw);
+    }
+    
+    const result = await handler(body, params);
+    
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(result));
+  } catch (e) {
+    console.error('Error:', e.message);
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: e.message }));
+  }
+});
+
+// 启动服务器
+server.listen(PORT, () => {
+  console.log(`\n🚀 Project Workspace Server running at http://localhost:${PORT}`);
+  console.log(`📁 Projects directory: ${PROJECTS_DIR}`);
+  console.log(`\n按 Ctrl+C 停止服务器\n`);
+});

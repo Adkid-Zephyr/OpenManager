@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenManager 使用手册</title>
+  <style>
+    :root {
+      --bg-top: #f5f6f2;
+      --bg-bottom: #e8ebe4;
+      --surface: rgba(250, 250, 247, 0.84);
+      --surface-strong: rgba(252, 252, 249, 0.94);
+      --surface-soft: rgba(238, 241, 244, 0.82);
+      --line: #dde2e8;
+      --line-strong: #c7ced8;
+      --ink: #1e2128;
+      --ink-soft: #4c5360;
+      --muted: #767d88;
+      --accent: #2347d3;
+      --accent-strong: #1b2f78;
+      --accent-soft: rgba(35, 71, 211, 0.12);
+      --shadow: 0 24px 64px rgba(31, 38, 50, 0.08);
+    }
+    * { box-sizing: border-box; }
+    html {
+      scroll-behavior: smooth;
+      background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+    }
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(35, 71, 211, 0.12), transparent 30%),
+        radial-gradient(circle at top right, rgba(126, 135, 148, 0.16), transparent 22%),
+        linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+      letter-spacing: 0.01em;
+      position: relative;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,0.34), transparent 42%),
+        repeating-linear-gradient(90deg, rgba(30, 33, 40, 0.018) 0 1px, transparent 1px 120px);
+      mix-blend-mode: soft-light;
+      opacity: 0.9;
+    }
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 20px 60px;
+      position: relative;
+      z-index: 1;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.3fr 0.7fr;
+      gap: 24px;
+      margin-bottom: 28px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+    .hero-main {
+      padding: 32px;
+    }
+    .hero-main h1 {
+      margin: 0 0 12px;
+      font-family: "Iowan Old Style", "Palatino Linotype", "Noto Serif SC", "Songti SC", serif;
+      font-size: 42px;
+      line-height: 1.1;
+      letter-spacing: 0.03em;
+    }
+    .hero-main p {
+      margin: 0;
+      color: var(--ink-soft);
+      line-height: 1.8;
+      font-size: 15px;
+    }
+    .hero-side {
+      padding: 24px;
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    .toc {
+      position: sticky;
+      top: 20px;
+      padding: 20px;
+    }
+    .toc h2 {
+      margin: 0 0 14px;
+      font-size: 16px;
+    }
+    .toc a {
+      display: block;
+      padding: 10px 12px;
+      margin-bottom: 6px;
+      color: var(--ink-soft);
+      text-decoration: none;
+      border-radius: 14px;
+      border: 1px solid transparent;
+      transition: 0.2s ease;
+      font-size: 14px;
+    }
+    .toc a:hover {
+      background: rgba(255,255,255,0.65);
+      border-color: var(--line);
+      color: var(--ink);
+    }
+    .content section {
+      padding: 24px 28px;
+      margin-bottom: 18px;
+    }
+    .content h2 {
+      margin: 0 0 12px;
+      font-size: 22px;
+      letter-spacing: 0.02em;
+    }
+    .content p, .content li {
+      color: var(--ink-soft);
+      line-height: 1.8;
+      font-size: 14px;
+    }
+    .content ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+    .code {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: #1e2128;
+      color: #e7ebf0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 13px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .mini {
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.64);
+      border: 1px solid var(--line);
+    }
+    .mini strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: var(--ink);
+      letter-spacing: 0.02em;
+    }
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(238, 241, 244, 0.5);
+      border-radius: 999px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(126, 135, 148, 0.5);
+      border-radius: 999px;
+      border: 2px solid transparent;
+      background-clip: padding-box;
+    }
+    @media (max-width: 920px) {
+      .hero, .grid, .mini-grid {
+        grid-template-columns: 1fr;
+      }
+      .toc {
+        position: static;
+      }
+      .hero-main h1 {
+        font-size: 32px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="hero">
+      <section class="card hero-main">
+        <div class="pill">OpenManager Handbook</div>
+        <h1>本地项目工作台<br>使用与设计手册</h1>
+        <p>OpenManager 的目标不是做一个华而不实的前端壳，而是把“项目、会话、共享记忆、任务、agent 绑定、本地文件系统”这些长期工作流真正揉成一个可持续使用的工作台。当前版本已经按“前后端分离、数据本地存储、后续可开源”这个方向整理过一轮。</p>
+      </section>
+      <aside class="card hero-side">
+        <div class="mini">
+          <strong>当前定位</strong>
+          <p>先作为 GitHub 开源项目维护，再收敛为一个 OpenClaw skill。</p>
+        </div>
+        <div class="mini">
+          <strong>运行方式</strong>
+          <p>前端静态页面 + 本地 Node API + OpenClaw CLI / Gateway。</p>
+        </div>
+      </aside>
+    </div>
+
+    <div class="grid">
+      <nav class="card toc">
+        <h2>目录</h2>
+        <a href="#goal">1. 设计目标</a>
+        <a href="#structure">2. 结构组成</a>
+        <a href="#data">3. 数据与记忆</a>
+        <a href="#agent">4. Agent 绑定方式</a>
+        <a href="#ui">5. 前端主要功能</a>
+        <a href="#cron">6. Cron 与 Skills</a>
+        <a href="#dev">7. 开发与开源建议</a>
+      </nav>
+
+      <main class="content">
+        <section class="card" id="goal">
+          <h2>1. 设计目标</h2>
+          <p>核心思路是“每个项目一个上下文容器，每个对话一个工作线程”。项目承载共享记忆、任务、文件和 agent 绑定；会话承载单条线程的对话与局部记忆。这样既保留长期上下文，也避免不同对话互相污染。</p>
+          <div class="mini-grid">
+            <div class="mini">
+              <strong>保留原始前端体验</strong>
+              <p>不推翻你已经习惯的界面和交互，只在内部结构上做模块化和解耦。</p>
+            </div>
+            <div class="mini">
+              <strong>适合长期维护</strong>
+              <p>源码、运行时数据、OpenClaw 配置和项目数据彼此分层，后面开源时更容易整理。</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" id="structure">
+          <h2>2. 结构组成</h2>
+          <p>当前项目已经分成静态前端和 API 后端两层。前端负责界面和交互，后端负责本地文件、项目数据、Cron、Skills 和 OpenClaw CLI 调用。</p>
+          <div class="code">skills/project-workspace/
+├── app.html
+├── api.js
+├── manual.html
+├── frontend/
+│   ├── index.html
+│   ├── api.js
+│   └── manual.html
+└── backend/
+    ├── server.js
+    ├── routes/
+    └── lib/</div>
+        </section>
+
+        <section class="card" id="data">
+          <h2>3. 数据与记忆</h2>
+          <p>项目数据仍然放在本地 `projects/` 下。每个项目使用文件夹作为边界，这和你一开始“本地文件系统是后端”的设计初衷一致。</p>
+          <div class="code">projects/&lt;project&gt;/
+├── .project.json
+├── memory/
+│   ├── shared.md
+│   ├── session-xxx.meta.json
+│   ├── session-xxx.jsonl
+│   └── session-xxx.summary.md
+└── tasks/tasks.json</div>
+          <ul>
+            <li>`shared.md`：项目级共享记忆，适合放目标、约束、架构决策。</li>
+            <li>`session-xxx.jsonl`：原始消息流，便于程序追加写入。</li>
+            <li>`session-xxx.summary.md`：对话摘要层，避免每轮都塞完整历史。</li>
+            <li>`tasks.json`：任务共享层，不再默认全量注入每一轮消息。</li>
+          </ul>
+        </section>
+
+        <section class="card" id="agent">
+          <h2>4. Agent 绑定方式</h2>
+          <p>推荐结构是“每个项目一个 agent，每个对话一个 session”。这样 workspace、模型和能力边界更清晰，也更接近 Dashboard 的真实使用方式。</p>
+          <ul>
+            <li>项目设置中可以手动绑定已有 agent。</li>
+            <li>创建项目时可以直接自动创建并绑定 agent。</li>
+            <li>绑定信息会写回 `.project.json`，包括 `agentId`、`workspacePath`、`model`。</li>
+          </ul>
+          <div class="code">{
+  "agentId": "dashboard",
+  "workspacePath": "/Users/xxx/.openclaw/workspace/projects/Dashboard 数据分析项目",
+  "model": "qwen3.5-plus"
+}</div>
+        </section>
+
+        <section class="card" id="ui">
+          <h2>5. 前端主要功能</h2>
+          <ul>
+            <li>项目列表、项目详情、项目设置、新建项目。</li>
+            <li>多会话管理。多窗口方式替代旧的多标签方案。</li>
+            <li>共享记忆查看与编辑。</li>
+            <li>任务列表与完成状态管理。</li>
+            <li>会话对话窗口、附件上传、记忆压缩、文件浏览。</li>
+          </ul>
+          <p>最近这轮还优化了“项目设置”的打开速度，并把新建项目时的 agent 绑定 UI 重新排了版。</p>
+        </section>
+
+        <section class="card" id="cron">
+          <h2>6. Cron 与 Skills</h2>
+          <p>Cron 现在走 OpenClaw 原生命令，支持最基础的创建、启用、禁用、立即运行和删除。Skills 的列表和状态来自 `openclaw skills list --json`，启用/禁用会写入 `~/.openclaw/openclaw.json` 的 `skills.entries`。</p>
+          <div class="code">{
+  "skills": {
+    "entries": {
+      "project-workspace": { "enabled": true },
+      "sag": { "enabled": false }
+    }
+  }
+}</div>
+          <p>注意：OpenClaw 会对技能列表做会话级快照，所以改完技能状态后，新建会话最稳妥。</p>
+        </section>
+
+        <section class="card" id="dev">
+          <h2>7. 开发与开源建议</h2>
+          <ul>
+            <li>把运行时数据和源码严格分开，避免开源仓库混入用户真实项目数据。</li>
+            <li>继续保持 API 路由按领域拆分，减少单文件膨胀。</li>
+            <li>前端可以继续沿着 `api.js + 单页静态 HTML` 方式演进，先保证可维护性，再考虑框架化。</li>
+            <li>如果后续发布到 GitHub，建议补齐 `LICENSE`、`.gitignore`、`CONTRIBUTING.md` 和最小安装说明。</li>
+          </ul>
+        </section>
+      </main>
+    </div>
+  </div>
+</body>
+</html>
