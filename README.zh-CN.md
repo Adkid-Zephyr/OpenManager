@@ -36,7 +36,7 @@ OpenManager 是一个为 OpenClaw 设计的本地优先项目工作台。
 如果你经常同时推进多个项目、长期续接上下文、或者不想每次重新解释背景，OpenManager 就是为这种使用方式准备的。
 
 <p align="center">
-  <img src="./docs/screenshots/review-overview-root.png" alt="OpenManager overview" width="100%">
+  <img src="./docs/screenshots/guide-memory-focus.png" alt="OpenManager overview" width="100%">
 </p>
 
 ## 为什么做这个项目
