@@ -1,0 +1,10 @@
+.DS_Store
+node_modules/
+*.log
+*.swp
+*.swo
+coverage/
+dist/
+backups/
+*.tgz
+.tmp-demo-workspace/

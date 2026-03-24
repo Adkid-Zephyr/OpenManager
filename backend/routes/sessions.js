@@ -8,6 +8,8 @@ import {
   deleteSessionStore,
   listSessions,
   readSessionContentForApi,
+  readSessionFactsState,
+  readSessionHotState,
   readSessionMeta,
   renameSessionMeta,
   writeSessionContentFromApi
@@ -57,6 +59,17 @@ export const sessionRoutes = {
     const { name, sessionId } = params;
     const { project } = await getProjectOrThrow(name);
     return { content: await readSessionContentForApi(project.path, sessionId) };
+  },
+
+  'GET /api/projects/:name/sessions/:sessionId/memory-state': async (_body, params) => {
+    const { name, sessionId } = params;
+    const { project } = await getProjectOrThrow(name);
+    const [hot, facts] = await Promise.all([
+      readSessionHotState(project.path, sessionId),
+      readSessionFactsState(project.path, sessionId)
+    ]);
+
+    return { hot, facts };
   },
 
   'POST /api/projects/:name/sessions/:sessionId/memory': async (body, params) => {

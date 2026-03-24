@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Project Workspace Manager</title>
+  <title>OpenManager</title>
   <style>
     :root {
       --bg-top: #f5f6f2;
@@ -453,6 +453,12 @@
     .modal-overlay.active {
       display: flex;
     }
+
+    .modal-overlay-scroll {
+      align-items: flex-start;
+      overflow-y: auto;
+      padding: 24px 16px;
+    }
     
     .modal {
       background: var(--surface-strong);
@@ -462,6 +468,12 @@
       width: 100%;
       max-width: 500px;
       box-shadow: var(--shadow-strong);
+    }
+
+    .modal-scroll {
+      max-height: calc(100vh - 48px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
     }
     
     .form-group {
@@ -727,26 +739,97 @@
     .conversation-input {
       padding: 16px 24px;
       border-top: 1px solid var(--line);
-      display: flex;
-      gap: 12px;
       background: rgba(247, 247, 244, 0.84);
     }
-    
-    .conversation-input input {
-      flex: 1;
-      padding: 12px 16px;
-      border: 1.5px solid var(--line-strong);
-      border-radius: 14px;
-      font-size: 14px;
-      background: rgba(255,255,255,0.88);
-      color: var(--ink);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.66);
+
+    .composer-shell {
+      border: 1px solid rgba(126, 135, 148, 0.18);
+      border-radius: 18px;
+      background: rgba(255,255,255,0.92);
+      box-shadow: 0 10px 24px rgba(31, 38, 50, 0.05);
+      overflow: hidden;
     }
-    
-    .conversation-input input:focus {
+
+    .composer-preview {
+      display: none;
+      gap: 10px;
+      align-items: center;
+      padding: 12px 14px 0;
+      flex-wrap: wrap;
+    }
+
+    .composer-preview.active {
+      display: flex;
+    }
+
+    .composer-preview-image {
+      width: 72px;
+      height: 72px;
+      object-fit: cover;
+      border-radius: 14px;
+      border: 1px solid rgba(126, 135, 148, 0.16);
+      background: rgba(238,241,244,0.78);
+    }
+
+    .composer-preview-file {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(238,241,244,0.78);
+      border: 1px solid rgba(126,135,148,0.12);
+      flex: 1;
+    }
+
+    .composer-preview-file-meta {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .composer-preview-file-meta strong,
+    .composer-preview-file-meta span {
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .composer-main {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      padding: 12px 14px;
+    }
+
+    .composer-textarea {
+      flex: 1;
+      min-height: 24px;
+      max-height: 180px;
+      border: none;
+      resize: none;
+      padding: 6px 0;
+      font-size: 14px;
+      line-height: 1.6;
+      background: transparent;
+      color: var(--ink);
+      overflow-y: auto;
+    }
+
+    .composer-textarea:focus {
       outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 4px rgba(35, 71, 211, 0.08);
+    }
+
+    .composer-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .composer-send {
+      min-width: 74px;
+      height: 40px;
     }
     
     .memory-panel {
@@ -852,7 +935,7 @@
         <div class="brand-block">
           <h1>OpenManager</h1>
           <div class="brand-tagline">Tailored Workspace</div>
-          <div class="subtitle">本地项目管理工作室</div>
+          <div class="subtitle">多线并行，记忆成序</div>
         </div>
       </div>
       <div class="header-actions">
@@ -883,8 +966,8 @@
         
         <div id="noProjectSelected" class="empty-state">
           <div class="empty-state-icon">📭</div>
-          <div>请从左侧选择一个项目</div>
-          <div style="margin-top: 8px; font-size: 13px;">或创建新项目开始</div>
+          <div>先创建一个项目工作台</div>
+          <div style="margin-top: 8px; font-size: 13px;">建议按目标命名，例如「官网改版」「数据看板」「播客选题库」</div>
         </div>
         
         <div id="projectContent" style="display: none;">
@@ -904,11 +987,11 @@
           </div>
           
           <div class="tabs">
-            <div class="tab active" onclick="switchTab('sessions')">💬 会话</div>
-            <div class="tab" onclick="switchTab('tasks')">📋 任务</div>
-            <div class="tab" onclick="switchTab('cron')">⏰ Cron</div>
-            <div class="tab" onclick="switchTab('skills')">🔧 技能</div>
-            <div class="tab" onclick="switchTab('memory')">🧠 记忆</div>
+            <div class="tab active" data-tab="sessions" onclick="switchTab('sessions', this)">💬 会话</div>
+            <div class="tab" data-tab="tasks" onclick="switchTab('tasks', this)">📋 任务</div>
+            <div class="tab" data-tab="cron" onclick="switchTab('cron', this)">⏰ Cron</div>
+            <div class="tab" data-tab="skills" onclick="switchTab('skills', this)">🔧 技能</div>
+            <div class="tab" data-tab="memory" onclick="switchTab('memory', this)">🧠 记忆</div>
           </div>
           
           <div id="sessionsTab">
@@ -964,7 +1047,7 @@
               </div>
             </div>
             <div style="margin-top: 16px; padding: 12px; background: rgba(238,241,244,0.76); border: 1px solid rgba(126,135,148,0.12); border-radius: 12px; font-size: 12px; color: #4c5360;">
-              💡 <strong>提示：</strong>技能开关会写入 `openclaw.json`。现有会话可能继续使用旧的技能快照，新会话会立刻使用新状态。
+              💡 <strong>提示：</strong>技能开关会修改当前用户的 OpenClaw 全局配置 `openclaw.json`。现有会话可能继续使用旧快照，新会话会立刻使用新状态。
             </div>
           </div>
           
@@ -1034,11 +1117,17 @@
       <h2>📁 创建新项目</h2>
       <div class="form-group">
         <label>项目名称</label>
-        <input type="text" id="newProjectName" placeholder="例如：dashboard-project">
+        <input type="text" id="newProjectName" placeholder="例如：官网改版 / 数据看板 / 内容选题库">
       </div>
       <div class="form-group">
         <label>项目描述</label>
-        <input type="text" id="newProjectDesc" placeholder="项目简介...">
+        <input type="text" id="newProjectDesc" placeholder="例如：围绕目标、任务和会话持续推进这个项目">
+      </div>
+      <div class="helper-card" style="margin-bottom: 16px;">
+        建议把项目名写成一个长期工作主题，把会话名写成当前阶段，例如「需求梳理」「接口联调」「发布收尾」。
+      </div>
+      <div class="helper-card" id="createProjectRuntimeDefaults" style="margin-bottom: 16px;">
+        正在读取当前 OpenManager 实例的默认模型和运行时配置。
       </div>
       <div class="form-group" style="margin-bottom: 12px;">
         <label class="checkbox-card">
@@ -1061,7 +1150,7 @@
             <select id="newProjectModelSelect" onchange="syncModelInputFromSelect('newProjectModel', 'newProjectModelSelect')" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; margin-bottom: 10px;">
               <option value="">正在加载可用模型...</option>
             </select>
-            <input type="text" id="newProjectModel" value="qwen3.5-plus" placeholder="例如：qwen3.5-plus 或 bailian/qwen3.5-plus" oninput="syncModelSelectFromInput('newProjectModel', 'newProjectModelSelect')">
+            <input type="text" id="newProjectModel" value="" placeholder="留空则跟随当前 OpenClaw 默认模型，也支持手动输入 alias 或 provider/model" oninput="syncModelSelectFromInput('newProjectModel', 'newProjectModelSelect')">
             <div class="muted-note" id="newProjectModelNote">将从 OpenClaw 同步可用模型，也支持手动输入别名或完整 model id。</div>
           </div>
         </div>
@@ -1086,7 +1175,7 @@
       <h2>💬 创建新会话</h2>
       <div class="form-group">
         <label>会话名称</label>
-        <input type="text" id="newSessionName" placeholder="例如：数据收集">
+        <input type="text" id="newSessionName" placeholder="例如：需求梳理 / 数据建模 / 发布计划">
       </div>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="hideModal('createSessionModal')">取消</button>
@@ -1162,6 +1251,8 @@
   <script>
     const api = window.ProjectWorkspaceAPI.createClient();
     const API_BASE = api.base;
+    const urlParams = new URLSearchParams(window.location.search);
+    const GUIDE_DEMO = urlParams.get('demo') === 'guide';
     
     let projects = [];
     let currentProject = null;
@@ -1174,22 +1265,102 @@
     let cachedModelsAt = 0;
     let agentsPromise = null;
     let modelsPromise = null;
-    let runStatusSeed = 0;
+    let runtimeDefaults = {
+      workspaceDir: '',
+      defaultAgentId: '',
+      defaultAgentWorkspace: '',
+      defaultModel: '',
+      source: {}
+    };
     const activeRunStatuses = {};
+    const runMonitors = {};
+    const sessionActiveRunIds = {};
+    const sessionRunActionState = {};
+    const composerSendArmState = {};
+    const composerHistories = {};
+    const composerHistoryState = {};
     const AGENT_CACHE_TTL = 60 * 1000;
     const MODEL_CACHE_TTL = 60 * 1000;
+    const GUIDE_DEMO_SKILLS = [
+      {
+        name: 'openmanager',
+        emoji: '🗂️',
+        description: '帮助按项目管理长期工作流、会话和本地记忆。',
+        eligible: true,
+        disabled: false
+      },
+      {
+        name: 'checks',
+        emoji: '✅',
+        description: '在发布和验收前提供结构化检查清单。',
+        eligible: true,
+        disabled: false
+      },
+      {
+        name: 'sag',
+        emoji: '🎙️',
+        description: '提供更有表现力的语音输出能力。',
+        eligible: false,
+        disabled: true
+      }
+    ];
+    const GUIDE_DEMO_CRON_JOBS = [
+      {
+        id: 'daily-review',
+        name: '每日项目回顾',
+        enabled: true,
+        schedule: { expr: '0 9 * * *' },
+        nextAt: new Date(Date.now() + 1000 * 60 * 60 * 12).toISOString()
+      },
+      {
+        id: 'weekly-cleanup',
+        name: '每周收尾提醒',
+        enabled: false,
+        schedule: { expr: '0 18 * * 5' }
+      }
+    ];
     
     // 初始化
     async function init() {
+      await loadRuntimeDefaults();
       await loadProjects();
       renderProjectList();
 
       scheduleAgentPrefetch();
       scheduleModelPrefetch();
 
-      const initialProject = new URLSearchParams(window.location.search).get('project');
+      const initialProject = urlParams.get('project');
       if (initialProject && projects.some(project => project.name === initialProject)) {
         await selectProject(initialProject);
+      } else if (currentProject && projects.some(project => project.name === currentProject)) {
+        await selectProject(currentProject);
+      }
+
+      await applyDeepLinkState();
+    }
+
+    async function applyDeepLinkState() {
+      if (!currentProject) return;
+
+      const tab = urlParams.get('tab');
+      if (tab && ['sessions', 'tasks', 'cron', 'skills', 'memory'].includes(tab)) {
+        switchTab(tab);
+      }
+
+      const sessionParam = urlParams.get('session');
+      if (!sessionParam) return;
+
+      try {
+        const data = await api.sessions.list(currentProject);
+        const session = (data.sessions || []).find((item) =>
+          item.id === sessionParam || item.name === sessionParam
+        );
+
+        if (session) {
+          await openConversation(session.id);
+        }
+      } catch (error) {
+        console.error('恢复深链会话失败:', error);
       }
     }
 
@@ -1237,7 +1408,7 @@
     async function loadModelOptions(force = false) {
       const fresh = cachedModels && (Date.now() - cachedModelsAt) < MODEL_CACHE_TTL;
       if (!force && fresh) {
-        return { models: cachedModels, defaultModel: cachedModels.find(model => (model.tags || []).includes('default'))?.name || null };
+        return { models: cachedModels, defaultModel: cachedModels.find(model => (model.tags || []).includes('default'))?.key || null };
       }
 
       if (!force && modelsPromise) {
@@ -1250,7 +1421,7 @@
           cachedModelsAt = Date.now();
           return {
             models: cachedModels,
-            defaultModel: data.defaultModel || cachedModels.find(model => (model.tags || []).includes('default'))?.name || null
+            defaultModel: data.defaultModel || cachedModels.find(model => (model.tags || []).includes('default'))?.key || null
           };
         })
         .finally(() => {
@@ -1258,6 +1429,59 @@
         });
 
       return modelsPromise;
+    }
+
+    function getPreferredModelValue(explicitValue = '') {
+      return String(explicitValue || '').trim() || runtimeDefaults.defaultModel || '';
+    }
+
+    function updateRuntimeDefaultsHint() {
+      const hint = document.getElementById('createProjectRuntimeDefaults');
+      if (!hint) return;
+
+      const parts = [];
+      if (runtimeDefaults.defaultModel) {
+        parts.push(`默认模型：${runtimeDefaults.defaultModel}`);
+      } else {
+        parts.push('默认模型：未指定（跟随 OpenClaw 当前默认）');
+      }
+
+      if (runtimeDefaults.defaultAgentId) {
+        parts.push(`实例默认 Agent：${runtimeDefaults.defaultAgentId}`);
+      }
+
+      if (runtimeDefaults.workspaceDir) {
+        parts.push(`工作区：${runtimeDefaults.workspaceDir}`);
+      }
+
+      hint.textContent = `当前实例运行时：${parts.join(' · ')}。新项目和新 agent 会优先继承这里的模型默认值，但你仍然可以手动覆盖。`;
+    }
+
+    async function loadRuntimeDefaults() {
+      try {
+        const data = await api.openclaw.runtime();
+        runtimeDefaults = {
+          workspaceDir: data.workspaceDir || '',
+          defaultAgentId: data.defaultAgentId || '',
+          defaultAgentWorkspace: data.defaultAgentWorkspace || '',
+          defaultModel: data.defaultModel || '',
+          source: data.source || {}
+        };
+      } catch {
+        runtimeDefaults = {
+          workspaceDir: '',
+          defaultAgentId: '',
+          defaultAgentWorkspace: '',
+          defaultModel: '',
+          source: {}
+        };
+      }
+
+      const modelInput = document.getElementById('newProjectModel');
+      if (modelInput) {
+        modelInput.value = getPreferredModelValue(modelInput.value);
+      }
+      updateRuntimeDefaultsHint();
     }
 
     function buildAgentSelectOptions(agents, selectedId, loading = false) {
@@ -1283,14 +1507,16 @@
       const options = [`<option value="">手动输入 / 保持当前值</option>`];
 
       (models || []).forEach((model) => {
-        const matches = normalizedSelected && [model.name, model.key].includes(normalizedSelected);
-        const tag = model.name === defaultModel || (Array.isArray(model.tags) && model.tags.includes('default'))
+        const matches = normalizedSelected && [model.key, model.name].includes(normalizedSelected);
+        const isDefault = model.key === defaultModel || model.name === defaultModel || (Array.isArray(model.tags) && model.tags.includes('default'));
+        const tag = isDefault
           ? ' · default'
           : '';
         const inputTag = model.input ? ` · ${model.input}` : '';
-        const label = `${model.name}${tag}${inputTag}`;
+        const keyTag = model.key && model.key !== model.name ? ` · ${model.key}` : '';
+        const label = `${model.name}${keyTag}${tag}${inputTag}`;
         options.push(
-          `<option value="${escapeHtml(model.name)}" ${matches ? 'selected' : ''}>${escapeHtml(label)}</option>`
+          `<option value="${escapeHtml(model.key || model.name)}" ${matches ? 'selected' : ''}>${escapeHtml(label)}</option>`
         );
       });
 
@@ -1320,14 +1546,14 @@
       const note = document.getElementById(noteId);
       if (!select || !input) return;
 
-      const currentValue = String(value || input.value || '').trim();
-      input.value = currentValue || 'qwen3.5-plus';
+      const currentValue = getPreferredModelValue(value || input.value || '');
+      input.value = currentValue;
       select.innerHTML = buildModelSelectOptions(cachedModels, currentValue, null, !cachedModels);
       syncModelSelectFromInput(inputId, selectId);
 
       if (note) {
         note.textContent = cachedModels
-          ? `已从缓存同步 ${cachedModels.length} 个可用模型，可继续手动输入别名或完整 model id。`
+          ? `已从缓存同步 ${cachedModels.length} 个可用模型，可继续手动输入 alias 或完整 provider/model。`
           : '正在从 OpenClaw 同步可用模型...';
       }
 
@@ -1336,7 +1562,7 @@
         select.innerHTML = buildModelSelectOptions(models, input.value, defaultModel, false);
         syncModelSelectFromInput(inputId, selectId);
         if (note) {
-          note.textContent = `已同步 ${models.length} 个可用模型${defaultModel ? `，默认是 ${defaultModel}` : ''}。也支持手动输入别名或完整 model id。`;
+          note.textContent = `已同步 ${models.length} 个可用模型${defaultModel ? `，当前默认是 ${defaultModel}` : ''}。也支持手动输入 alias 或完整 provider/model。`;
         }
       } catch (error) {
         if (note) {
@@ -1350,6 +1576,95 @@
       return `${(value / 1000).toFixed(1)}s`;
     }
 
+    function getRunStatusDomId(runId) {
+      return `run-status-${runId}`;
+    }
+
+    function isConversationOpen(sessionId) {
+      const modal = document.getElementById('conversationModal');
+      return Boolean(modal && modal.dataset.sessionId === sessionId);
+    }
+
+    function getConversationMessagesElement() {
+      return document.getElementById('conversationMessages');
+    }
+
+    function getComposerPrimaryButton(sessionId) {
+      return document.getElementById(`composerPrimaryBtn_${sessionId}`);
+    }
+
+    function getComposerReconnectButton(sessionId) {
+      return document.getElementById(`composerReconnectBtn_${sessionId}`);
+    }
+
+    function getActiveSessionRunId(sessionId) {
+      const runId = sessionActiveRunIds[sessionId];
+      if (!runId) return null;
+
+      const monitor = runMonitors[runId];
+      if (monitor && monitor.done) {
+        return null;
+      }
+
+      const state = activeRunStatuses[getRunStatusDomId(runId)];
+      if (state && state.finishedAt) {
+        return null;
+      }
+
+      return runId;
+    }
+
+    function ensureSessionRunActionState(sessionId) {
+      if (!sessionRunActionState[sessionId]) {
+        sessionRunActionState[sessionId] = {
+          reconnecting: false,
+          stopping: false
+        };
+      }
+      return sessionRunActionState[sessionId];
+    }
+
+    function updateConversationActionState(sessionId) {
+      const primaryBtn = getComposerPrimaryButton(sessionId);
+      const reconnectBtn = getComposerReconnectButton(sessionId);
+      const input = getComposerInput(sessionId);
+      if (!primaryBtn || !input) return;
+
+      const actionState = ensureSessionRunActionState(sessionId);
+      const activeRunId = getActiveSessionRunId(sessionId);
+      const hasDraft = Boolean(input.value.trim() || selectedFiles[sessionId]?.file);
+
+      if (activeRunId) {
+        primaryBtn.textContent = actionState.stopping ? '停止中...' : '停止运行';
+        primaryBtn.disabled = actionState.stopping;
+        primaryBtn.dataset.mode = 'stop';
+
+        if (reconnectBtn) {
+          reconnectBtn.style.display = 'inline-flex';
+          reconnectBtn.disabled = actionState.reconnecting;
+          reconnectBtn.textContent = actionState.reconnecting ? '连接中...' : '重新连接 run';
+        }
+        return;
+      }
+
+      primaryBtn.textContent = '发送';
+      primaryBtn.disabled = !hasDraft;
+      primaryBtn.dataset.mode = 'send';
+
+      if (reconnectBtn) {
+        reconnectBtn.style.display = 'none';
+        reconnectBtn.disabled = false;
+        reconnectBtn.textContent = '重新连接 run';
+      }
+    }
+
+    function scrollConversationToBottom() {
+      const messagesDiv = getConversationMessagesElement();
+      if (messagesDiv) {
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      }
+    }
+
     function finishRunStep(step, finishedAt = Date.now()) {
       if (!step.finishedAt) {
         step.finishedAt = finishedAt;
@@ -1358,6 +1673,73 @@
         step.state = 'done';
       }
       return step;
+    }
+
+    function ensureRunStatusState(statusId, { sessionId, runId, startedAt = Date.now() } = {}) {
+      if (activeRunStatuses[statusId]) {
+        return activeRunStatuses[statusId];
+      }
+
+      activeRunStatuses[statusId] = {
+        id: statusId,
+        runId,
+        sessionId,
+        startedAt,
+        title: '准备运行',
+        steps: [
+          {
+            label: '准备上下文',
+            state: 'active',
+            startedAt
+          }
+        ],
+        toolCalls: [],
+        renderedResult: false
+      };
+
+      activeRunStatuses[statusId].interval = setInterval(() => {
+        renderRunStatus(statusId);
+      }, 100);
+
+      return activeRunStatuses[statusId];
+    }
+
+    function attachRunStatusToConversation(sessionId, runId, startedAt = Date.now()) {
+      const statusId = getRunStatusDomId(runId);
+      ensureRunStatusState(statusId, { sessionId, runId, startedAt });
+      sessionActiveRunIds[sessionId] = runId;
+      updateConversationActionState(sessionId);
+
+      if (!isConversationOpen(sessionId)) {
+        return statusId;
+      }
+
+      const messagesDiv = getConversationMessagesElement();
+      if (!messagesDiv) {
+        return statusId;
+      }
+
+      let messageDiv = document.getElementById(statusId);
+      if (!messageDiv) {
+        messageDiv = document.createElement('div');
+        messageDiv.className = 'message assistant';
+        messageDiv.id = statusId;
+        messageDiv.innerHTML = `
+          <div class="message-avatar">🤖</div>
+          <div class="message-content">
+            <div style="border: 1px solid rgba(35,71,211,0.16); background: linear-gradient(180deg, rgba(35,71,211,0.05), rgba(255,255,255,0.92)); border-radius: 16px; padding: 12px 14px; box-shadow: 0 12px 28px rgba(31,38,50,0.04);">
+              <div class="run-status-summary" style="display: flex; align-items: center; justify-content: space-between; gap: 10px;"></div>
+              <div class="run-status-steps" style="margin-top: 8px;"></div>
+              <div class="run-status-badges"></div>
+            </div>
+          </div>
+        `;
+        messagesDiv.appendChild(messageDiv);
+      }
+
+      renderRunStatus(statusId);
+      scrollConversationToBottom();
+      return statusId;
     }
 
     function renderRunStatus(statusId) {
@@ -1373,7 +1755,7 @@
 
       if (summaryEl) {
         summaryEl.innerHTML = `
-          <span style="font-weight: 600; color: ${state.error ? '#dc2626' : state.finishedAt ? '#0f766e' : '#2347d3'};">${escapeHtml(state.title)}</span>
+          <span style="font-weight: 600; color: ${state.error ? '#dc2626' : state.stopped ? '#a16207' : state.finishedAt ? '#0f766e' : '#2347d3'};">${escapeHtml(state.title)}</span>
           <span style="font-size: 12px; color: #94a3b8;">${formatDuration(totalElapsed)}</span>
         `;
       }
@@ -1442,7 +1824,8 @@
       const finishedAt = Date.now();
       state.finishedAt = finishedAt;
       state.error = Boolean(result.error);
-      state.title = result.error ? '运行失败' : '运行完成';
+      state.stopped = Boolean(result.stopped);
+      state.title = result.stopped ? '已停止' : result.error ? '运行失败' : '运行完成';
       state.toolCalls = Array.isArray(result.toolCalls) ? result.toolCalls : [];
 
       const activeStep = state.steps.find((step) => step.state === 'active');
@@ -1462,7 +1845,7 @@
       }
 
       state.steps.push({
-        label: result.error ? '返回错误' : '响应就绪',
+        label: result.stopped ? '已停止' : result.error ? '返回错误' : '响应就绪',
         detail: result.model ? `模型 ${result.model}` : '',
         state: result.error ? 'error' : 'done',
         startedAt: finishedAt,
@@ -1483,6 +1866,16 @@
         state.waitingTimeout = null;
       }
 
+      if (state.sessionId && sessionActiveRunIds[state.sessionId] === state.runId) {
+        delete sessionActiveRunIds[state.sessionId];
+      }
+      if (state.sessionId) {
+        const actionState = ensureSessionRunActionState(state.sessionId);
+        actionState.stopping = false;
+        actionState.reconnecting = false;
+        updateConversationActionState(state.sessionId);
+      }
+
       renderRunStatus(statusId);
     }
 
@@ -1494,8 +1887,10 @@
         state.title = event.label || state.title;
         if (event.phase === 'context') {
           const current = state.steps[state.steps.length - 1];
-          if (current && current.label === '准备上下文' && current.state === 'active' && event.detail) {
-            current.detail = event.detail;
+          if (current && current.label === '准备上下文' && current.state === 'active') {
+            if (event.detail) {
+              current.detail = event.detail;
+            }
             renderRunStatus(statusId);
             return;
           }
@@ -1528,24 +1923,120 @@
       }
     }
 
-    async function waitForOpenclawRun(runId, statusId) {
-      let cursor = 0;
+    function applyRunSnapshot(sessionId, snapshot) {
+      const statusId = attachRunStatusToConversation(sessionId, snapshot.runId, snapshot.createdAt || Date.now());
+      ensureRunStatusState(statusId, {
+        sessionId,
+        runId: snapshot.runId,
+        startedAt: snapshot.createdAt || Date.now()
+      });
 
-      while (true) {
-        const snapshot = await api.openclaw.chatStatus(runId, cursor);
-        if (snapshot.error) {
-          throw new Error(snapshot.error);
-        }
+      (snapshot.events || []).forEach((event) => applyRunEvent(statusId, event));
 
-        (snapshot.events || []).forEach((event) => applyRunEvent(statusId, event));
-        cursor = snapshot.cursor || cursor;
-
-        if (snapshot.done) {
-          return snapshot.result;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 350));
+      if (snapshot.done) {
+        completeRunStatus(statusId, {
+          stopped: snapshot.result?.stopped === true,
+          error: snapshot.result?.connected === false,
+          model: snapshot.result?.meta?.agentMeta?.model || null,
+          toolCalls: snapshot.result?.toolCalls || []
+        });
       }
+
+      return statusId;
+    }
+
+    async function ensureRunMonitor(runId, sessionId, options = {}) {
+      if (runMonitors[runId]) {
+        attachRunStatusToConversation(sessionId, runId, options.createdAt || runMonitors[runId].createdAt || Date.now());
+        return runMonitors[runId].promise;
+      }
+
+      const monitor = {
+        runId,
+        sessionId,
+        createdAt: options.createdAt || Date.now(),
+        cursor: 0,
+        done: false,
+        promise: null
+      };
+      runMonitors[runId] = monitor;
+      sessionActiveRunIds[sessionId] = runId;
+      attachRunStatusToConversation(sessionId, runId, monitor.createdAt);
+
+      monitor.promise = (async () => {
+        let firstSnapshot = options.initialSnapshot || null;
+
+        if (firstSnapshot) {
+          applyRunSnapshot(sessionId, firstSnapshot);
+          monitor.cursor = firstSnapshot.cursor || 0;
+          if (firstSnapshot.done) {
+            monitor.done = true;
+            return firstSnapshot.result;
+          }
+        }
+
+        while (true) {
+          const snapshot = await api.openclaw.chatStatus(runId, monitor.cursor);
+          if (snapshot.error) {
+            throw new Error(snapshot.error);
+          }
+
+          applyRunSnapshot(sessionId, snapshot);
+          monitor.cursor = snapshot.cursor || monitor.cursor;
+
+          if (snapshot.done) {
+            monitor.done = true;
+            return snapshot.result;
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 350));
+        }
+      })()
+        .catch((error) => {
+          monitor.error = error;
+          throw error;
+        })
+        .finally(() => {
+          monitor.done = true;
+          if (sessionActiveRunIds[sessionId] === runId) {
+            delete sessionActiveRunIds[sessionId];
+          }
+          const actionState = ensureSessionRunActionState(sessionId);
+          actionState.reconnecting = false;
+          actionState.stopping = false;
+          updateConversationActionState(sessionId);
+        });
+
+      updateConversationActionState(sessionId);
+      return monitor.promise;
+    }
+
+    async function recoverConversationRun(sessionId, options = {}) {
+      const { force = false, background = false } = options;
+      const localRunId = sessionActiveRunIds[sessionId];
+      if (!force && localRunId && runMonitors[localRunId] && !runMonitors[localRunId].done) {
+        attachRunStatusToConversation(sessionId, localRunId, runMonitors[localRunId].createdAt);
+        return;
+      }
+
+      const snapshot = await api.openclaw.chatSessionRun(currentProject, sessionId, 0);
+      if (!snapshot || snapshot.found === false || !snapshot.runId || snapshot.done) {
+        updateConversationActionState(sessionId);
+        return;
+      }
+
+      sessionActiveRunIds[sessionId] = snapshot.runId;
+      applyRunSnapshot(sessionId, snapshot);
+      if (!snapshot.done) {
+        const promise = ensureRunMonitor(snapshot.runId, sessionId, {
+          createdAt: snapshot.createdAt,
+          initialSnapshot: snapshot
+        });
+        if (!background) {
+          await promise;
+        }
+      }
+      updateConversationActionState(sessionId);
     }
 
     function openManual() {
@@ -1603,6 +2094,7 @@
           <li class="empty-state">
             <div class="empty-state-icon">📭</div>
             <div>暂无项目</div>
+            <div style="margin-top: 8px; font-size: 12px; color: #8a93a0;">从一个长期主题开始，比如「官网改版」或「内容工作台」</div>
             <button class="btn btn-primary" style="margin-top: 12px;" onclick="showCreateProjectModal()">创建第一个项目</button>
           </li>
         `;
@@ -1868,6 +2360,11 @@
     // 加载技能列表
     async function loadSkillsList() {
       const skillsList = document.getElementById('skillsList');
+
+      if (GUIDE_DEMO) {
+        renderSkills(GUIDE_DEMO_SKILLS);
+        return;
+      }
       
       try {
         const data = await api.skills.list();
@@ -2050,6 +2547,11 @@
     // 加载 Cron 任务列表
     async function loadCronJobs() {
       const cronList = document.getElementById('cronList');
+
+      if (GUIDE_DEMO) {
+        renderCronJobs(GUIDE_DEMO_CRON_JOBS);
+        return;
+      }
       
       try {
         const data = await api.cron.list();
@@ -2267,15 +2769,25 @@
       document.getElementById('infoCreatedAt').textContent = new Date(project.createdAt).toLocaleString('zh-CN');
       document.getElementById('infoPath').textContent = project.path;
       document.getElementById('infoAgent').textContent = project.config?.agentId || '未绑定（使用默认 main）';
-      document.getElementById('infoWorkspace').textContent = project.config?.workspacePath || '默认主工作区';
-      document.getElementById('infoModel').textContent = project.config?.model || 'qwen3.5-plus';
+      const workspaceMode = project.config?.workspaceMode || (project.config?.workspacePath ? 'custom' : 'main');
+      document.getElementById('infoWorkspace').textContent = workspaceMode === 'project'
+        ? '当前项目目录'
+        : workspaceMode === 'custom'
+          ? (project.config?.workspacePath || '自定义目录')
+          : '主工作区';
+      document.getElementById('infoModel').textContent = project.config?.runtime === 'local'
+        ? '本地 Codex'
+        : (project.config?.model || runtimeDefaults.defaultModel || '未指定（跟随 OpenClaw 当前默认）');
     }
     
     // 切换标签页
-    function switchTab(tab) {
+    function switchTab(tab, triggerEl = null) {
       currentTab = tab;
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      event.target.classList.add('active');
+      const activeTab = triggerEl || document.querySelector(`.tab[data-tab="${tab}"]`);
+      if (activeTab) {
+        activeTab.classList.add('active');
+      }
       
       document.getElementById('sessionsTab').style.display = tab === 'sessions' ? 'block' : 'none';
       document.getElementById('tasksTab').style.display = tab === 'tasks' ? 'block' : 'none';
@@ -2327,6 +2839,39 @@
       }
     }
 
+    function toggleProjectWorkspacePathField() {
+      const mode = document.getElementById('projectWorkspaceMode')?.value || 'main';
+      const input = document.getElementById('projectWorkspacePath');
+      const note = document.getElementById('projectWorkspaceModeNote');
+      if (!input || !note) return;
+
+      input.disabled = mode !== 'custom';
+      input.style.opacity = mode === 'custom' ? '1' : '0.6';
+
+      if (mode === 'project') {
+        note.textContent = '对话默认在当前项目目录下运行，适合代码与文件操作。';
+      } else if (mode === 'custom') {
+        note.textContent = '对话会在下面的自定义目录运行，请确保路径存在且你希望它能访问。';
+      } else {
+        note.textContent = '对话运行在 OpenClaw 主工作区，适合跨项目操作。';
+      }
+    }
+
+    function resolveProjectWorkspaceSelection() {
+      const mode = document.getElementById('projectWorkspaceMode')?.value || 'main';
+      const manualPath = document.getElementById('projectWorkspacePath')?.value.trim() || '';
+
+      if (mode === 'project') {
+        return currentProjectDetails?.path || null;
+      }
+
+      if (mode === 'custom') {
+        return manualPath || null;
+      }
+
+      return null;
+    }
+
     async function showProjectSettingsModal() {
       if (!currentProject) return;
 
@@ -2342,13 +2887,14 @@
       }
 
       const config = projectData.config || {};
+      const workspaceMode = config.workspaceMode || (config.workspacePath ? 'custom' : 'main');
       const initialOptions = buildAgentSelectOptions(cachedAgents, config.agentId, !cachedAgents);
 
       const overlay = document.createElement('div');
-      overlay.className = 'modal-overlay active';
+      overlay.className = 'modal-overlay modal-overlay-scroll active';
       overlay.id = 'projectSettingsModal';
       overlay.innerHTML = `
-        <div class="modal">
+        <div class="modal modal-scroll" style="max-width: 720px;">
           <h2 style="margin-bottom: 20px;">⚙️ 项目设置</h2>
           <div class="helper-card">
             这里可以绑定已有 agent，也可以一键生成一个新的 OpenClaw 子 agent 并写回到项目配置。
@@ -2367,14 +2913,38 @@
               </div>
               <div class="form-group">
                 <label>默认模型</label>
-                <select id="projectModelSelect" onchange="syncModelInputFromSelect('projectModel', 'projectModelSelect')" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; margin-bottom: 10px;">${buildModelSelectOptions(cachedModels, config.model || 'qwen3.5-plus', null, !cachedModels)}</select>
-                <input type="text" id="projectModel" value="${config.model || 'qwen3.5-plus'}" placeholder="例如：qwen3.5-plus 或 bailian/qwen3.5-plus" oninput="syncModelSelectFromInput('projectModel', 'projectModelSelect')">
+                <select id="projectModelSelect" onchange="syncModelInputFromSelect('projectModel', 'projectModelSelect')" style="width: 100%; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; margin-bottom: 10px;">${buildModelSelectOptions(cachedModels, getPreferredModelValue(config.model), null, !cachedModels)}</select>
+                <input type="text" id="projectModel" value="${escapeHtml(getPreferredModelValue(config.model))}" placeholder="留空则跟随当前 OpenClaw 默认模型，也支持手动输入 alias 或 provider/model" oninput="syncModelSelectFromInput('projectModel', 'projectModelSelect')">
                 <div class="muted-note" id="projectModelNote">${cachedModels ? `已从缓存同步 ${cachedModels.length} 个可用模型。` : '正在后台加载可用模型...'}</div>
               </div>
             </div>
             <div class="form-group" style="margin-bottom: 0;">
               <label>工作区路径</label>
               <input type="text" id="projectWorkspacePath" value="${config.workspacePath || ''}" placeholder="留空则使用主工作区">
+            </div>
+          </div>
+          <div class="modal-section">
+            <h3>权限与运行</h3>
+            <div class="field-grid" style="margin-bottom: 16px;">
+              <div class="form-group">
+                <label>对话运行方式</label>
+                <select id="projectRuntime">
+                  <option value="gateway" ${config.runtime !== 'local' ? 'selected' : ''}>Gateway Agent</option>
+                  <option value="local" ${config.runtime === 'local' ? 'selected' : ''}>本地 Codex</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>文件作用域</label>
+                <select id="projectWorkspaceMode" onchange="toggleProjectWorkspacePathField()">
+                  <option value="main" ${workspaceMode === 'main' ? 'selected' : ''}>主工作区</option>
+                  <option value="project" ${workspaceMode === 'project' ? 'selected' : ''}>当前项目目录</option>
+                  <option value="custom" ${workspaceMode === 'custom' ? 'selected' : ''}>自定义目录</option>
+                </select>
+              </div>
+            </div>
+            <div class="muted-note" id="projectWorkspaceModeNote"></div>
+            <div class="helper-card" style="margin-top: 12px; margin-bottom: 0;">
+              <code>Gateway Agent</code> 会继续走 OpenClaw agent；<code>本地 Codex</code> 会在你选定的目录里直接调用本地 Codex 执行器，更适合改代码、写文件、安装依赖和做项目级操作。本地 Codex 模式会忽略上面的 OpenClaw 模型字段。
             </div>
           </div>
           <div class="form-group">
@@ -2412,8 +2982,9 @@
         selectId: 'projectModelSelect',
         inputId: 'projectModel',
         noteId: 'projectModelNote',
-        value: config.model || 'qwen3.5-plus'
+        value: config.model || ''
       });
+      toggleProjectWorkspacePathField();
     }
 
     async function saveProjectSettings() {
@@ -2421,9 +2992,11 @@
 
       const payload = {
         agentId: document.getElementById('projectAgentId').value || null,
-        workspacePath: document.getElementById('projectWorkspacePath').value.trim() || null,
-        model: document.getElementById('projectModel').value.trim() || 'qwen3.5-plus',
-        description: document.getElementById('projectSettingsDesc').value.trim()
+        workspacePath: resolveProjectWorkspaceSelection(),
+        model: document.getElementById('projectModel').value.trim() || runtimeDefaults.defaultModel || '',
+        description: document.getElementById('projectSettingsDesc').value.trim(),
+        runtime: document.getElementById('projectRuntime').value || 'gateway',
+        workspaceMode: document.getElementById('projectWorkspaceMode').value || 'main'
       };
 
       try {
@@ -2445,8 +3018,8 @@
 
       const payload = {
         agentName: document.getElementById('projectAgentName').value.trim() || null,
-        workspacePath: document.getElementById('projectWorkspacePath').value.trim() || null,
-        model: document.getElementById('projectModel').value.trim() || 'qwen3.5-plus'
+        workspacePath: resolveProjectWorkspaceSelection(),
+        model: document.getElementById('projectModel').value.trim() || runtimeDefaults.defaultModel || ''
       };
 
       try {
@@ -2461,7 +3034,7 @@
           document.getElementById('projectAgentId').innerHTML = buildAgentSelectOptions(agents, result.agentId, false);
         }
         document.getElementById('projectWorkspacePath').value = result.workspacePath || '';
-        document.getElementById('projectModel').value = result.model || 'qwen3.5-plus';
+        document.getElementById('projectModel').value = result.model || getPreferredModelValue();
 
         showToast(`✅ 已创建并绑定 Agent：${result.agentId}`);
         await loadProjects();
@@ -2479,7 +3052,7 @@
       const autoCreateAgent = document.getElementById('newProjectAutoAgent').checked;
       const agentName = document.getElementById('newProjectAgentName').value.trim();
       const workspacePath = document.getElementById('newProjectWorkspacePath').value.trim();
-      const model = document.getElementById('newProjectModel').value.trim() || 'qwen3.5-plus';
+      const model = document.getElementById('newProjectModel').value.trim() || runtimeDefaults.defaultModel || '';
       
       if (!name) {
         alert('请输入项目名称');
@@ -2503,7 +3076,7 @@
         document.getElementById('newProjectAutoAgent').checked = false;
         document.getElementById('newProjectAgentName').value = '';
         document.getElementById('newProjectWorkspacePath').value = '';
-        document.getElementById('newProjectModel').value = 'qwen3.5-plus';
+        document.getElementById('newProjectModel').value = getPreferredModelValue();
         toggleCreateProjectAgentOptions();
         
         await loadProjects();
@@ -2593,6 +3166,7 @@
       const overlay = document.createElement('div');
       overlay.className = 'modal-overlay active';
       overlay.id = 'conversationModal';
+      overlay.dataset.sessionId = sessionId;
       overlay.innerHTML = `
         <div class="modal conversation-modal">
           <div class="conversation-header">
@@ -2602,7 +3176,7 @@
               <span style="font-size: 12px; color: #999; margin-left: 12px;">${currentProject}</span>
             </div>
             <div style="display: flex; gap: 8px;">
-              <button class="btn btn-secondary" onclick="document.getElementById('conversationModal').remove()">✕ 关闭</button>
+              <button class="btn btn-secondary" onclick="closeConversation('${sessionId}')">✕ 关闭</button>
             </div>
           </div>
           
@@ -2625,7 +3199,7 @@
               <div class="memory-panel-content" id="memoryPanelContent">
                 <div style="color: #999; font-size: 13px; text-align: center; padding: 20px;">
                   对话记忆将自动记录在这里<br><br>
-                  点击"🤖 压缩"可用 AI 智能总结
+                  点击"🤖 压缩"可生成阶段摘要，原始记录会保留
                 </div>
               </div>
               <div class="memory-actions">
@@ -2636,33 +3210,123 @@
           </div>
           
           <div class="conversation-input">
-            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
-              <input type="file" id="fileInput" accept="image/*,audio/*,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.txt,.md,.csv" style="display: none;" onchange="handleFileSelect('${sessionId}', this)">
-              <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()" title="上传图片/语音" style="padding: 6px 10px; font-size: 14px;">📎</button>
-              <div id="filePreview_${sessionId}" style="flex: 1; display: none; align-items: center; gap: 8px; background: rgba(238,241,244,0.78); border: 1px solid rgba(126,135,148,0.12); padding: 8px 10px; border-radius: 12px;">
-                <span id="fileName_${sessionId}" style="font-size: 13px; color: #4c5360; flex: 1;"></span>
-                <button class="btn btn-secondary" onclick="clearFile('${sessionId}')" style="padding: 2px 6px; font-size: 12px;">✕</button>
+            <div class="composer-shell">
+              <input type="file" id="fileInput_${sessionId}" accept="image/*,audio/*,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.txt,.md,.csv" style="display: none;" onchange="handleFileSelect('${sessionId}', this)">
+              <div class="composer-preview" id="filePreview_${sessionId}">
+                <img id="filePreviewImage_${sessionId}" class="composer-preview-image" alt="attachment preview" style="display: none;">
+                <div class="composer-preview-file">
+                  <div style="font-size: 18px;">📎</div>
+                  <div class="composer-preview-file-meta">
+                    <strong id="fileName_${sessionId}"></strong>
+                    <span id="fileMeta_${sessionId}" style="font-size: 12px; color: var(--muted);"></span>
+                  </div>
+                  <button class="btn btn-secondary" onclick="clearFile('${sessionId}')" style="padding: 4px 10px; font-size: 12px;">移除</button>
+                </div>
               </div>
-            </div>
-            <div style="display: flex; gap: 8px;">
-              <input type="text" id="messageInput" placeholder="输入消息... (按 Enter 发送，支持图片/语音上传)" onkeypress="if(event.key==='Enter')sendMessage('${sessionId}')" style="flex: 1;">
-              <button class="btn btn-primary" onclick="sendMessage('${sessionId}')">发送</button>
+              <div class="composer-main">
+                <button class="btn btn-secondary" onclick="document.getElementById('fileInput_${sessionId}').click()" title="上传图片、语音或文档" style="padding: 8px 12px; font-size: 14px;">📎</button>
+                <textarea id="messageInput_${sessionId}" class="composer-textarea" rows="1" placeholder="输入消息... 连按两次 Enter 发送，Shift+Enter 换行，↑↓ 切换最近发送内容"></textarea>
+                <div class="composer-actions">
+                  <button class="btn btn-secondary" id="composerReconnectBtn_${sessionId}" onclick="reconnectConversationRun('${sessionId}')" style="display: none;">重新连接 run</button>
+                  <button class="btn btn-primary composer-send" id="composerPrimaryBtn_${sessionId}" onclick="handleComposerPrimaryAction('${sessionId}')" disabled>发送</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       `;
       document.body.appendChild(overlay);
+      bindConversationComposer(sessionId);
       
       // 加载对话记忆和历史消息
-      loadConversationMemory(sessionId);
-      loadConversationHistory(sessionId);
+      await loadConversationMemory(sessionId);
+      await loadConversationHistory(sessionId);
+      await recoverConversationRun(sessionId).catch((error) => {
+        console.error('恢复运行状态失败:', error);
+      });
+      updateConversationActionState(sessionId);
+    }
+
+    function closeConversation(sessionId) {
+      clearFile(sessionId);
+      const modal = document.getElementById('conversationModal');
+      if (modal) {
+        modal.remove();
+      }
+    }
+
+    function handleComposerPrimaryAction(sessionId) {
+      if (getActiveSessionRunId(sessionId)) {
+        stopConversationRun(sessionId);
+        return;
+      }
+      sendMessage(sessionId);
+    }
+
+    async function reconnectConversationRun(sessionId) {
+      const actionState = ensureSessionRunActionState(sessionId);
+      if (actionState.reconnecting) return;
+
+      actionState.reconnecting = true;
+      updateConversationActionState(sessionId);
+
+      try {
+        const snapshot = await api.openclaw.chatSessionRun(currentProject, sessionId, 0);
+        if (!snapshot || snapshot.found === false || !snapshot.runId || snapshot.done) {
+          showToast('当前没有可重新连接的运行', '#64748b');
+          return;
+        }
+
+        sessionActiveRunIds[sessionId] = snapshot.runId;
+        applyRunSnapshot(sessionId, snapshot);
+        ensureRunMonitor(snapshot.runId, sessionId, {
+          createdAt: snapshot.createdAt,
+          initialSnapshot: snapshot
+        }).catch((error) => {
+          console.error('重新连接 run 失败:', error);
+        });
+        showToast('已重新连接当前运行');
+      } catch (error) {
+        showToast(`重新连接失败：${error.message}`, '#b24b56');
+      } finally {
+        actionState.reconnecting = false;
+        updateConversationActionState(sessionId);
+      }
+    }
+
+    async function stopConversationRun(sessionId) {
+      const runId = getActiveSessionRunId(sessionId);
+      if (!runId) {
+        updateConversationActionState(sessionId);
+        return;
+      }
+
+      const actionState = ensureSessionRunActionState(sessionId);
+      if (actionState.stopping) return;
+
+      actionState.stopping = true;
+      updateConversationActionState(sessionId);
+
+      try {
+        const result = await api.openclaw.stopChatRun(runId);
+        if (result.error) {
+          throw new Error(result.error);
+        }
+        showToast(result.alreadyDone ? '当前运行已经结束' : '已发送停止请求', '#64748b');
+      } catch (error) {
+        actionState.stopping = false;
+        updateConversationActionState(sessionId);
+        showToast(`停止失败：${error.message}`, '#b24b56');
+      }
     }
     
     // 发送消息（支持文件上传）
     async function sendMessage(sessionId) {
-      const input = document.getElementById('messageInput');
+      const input = getComposerInput(sessionId);
+      if (!input) return;
       const message = input.value.trim();
-      const file = selectedFiles[sessionId];
+      const selected = selectedFiles[sessionId];
+      const file = selected?.file || selected;
       
       if (!message && !file) return;
       
@@ -2710,16 +3374,18 @@
       // 添加用户消息（带附件）
       addMessage(fullMessage, 'user', attachments);
       input.value = '';
+      resetComposerSendArm(sessionId);
+      resizeComposer(input);
+      pushComposerHistory(sessionId, fullMessage);
+      updateConversationActionState(sessionId);
       
       // 记录原始对话到记忆（用于 AI 压缩）
-      await appendToMemoryRaw(sessionId, { type: 'user', text: fullMessage, time: new Date().toISOString() });
-      
-      // 显示思考中状态
-      const thinkingId = addThinkingMessage();
+      await appendToMemoryRaw(sessionId, { type: 'user', text: fullMessage, attachments, time: new Date().toISOString() });
       
       // 调用 OpenClaw API
       try {
         let data;
+        let thinkingId = null;
         try {
           const started = await api.openclaw.chatStart({
             project: currentProject,
@@ -2731,8 +3397,13 @@
             throw new Error('未拿到运行 ID');
           }
 
-          data = await waitForOpenclawRun(started.runId, thinkingId);
+          thinkingId = attachRunStatusToConversation(sessionId, started.runId, started.createdAt || Date.now());
+          updateConversationActionState(sessionId);
+          data = await ensureRunMonitor(started.runId, sessionId, {
+            createdAt: started.createdAt || Date.now()
+          });
         } catch (streamError) {
+          thinkingId = addThinkingMessage(sessionId);
           applyRunEvent(thinkingId, {
             type: 'note',
             detail: `实时日志不可用，已回退到直连模式：${streamError.message}`
@@ -2745,15 +3416,27 @@
           });
         }
         
-        if (data.connected === false) {
+        if (data.stopped) {
+          completeRunStatus(thinkingId, {
+            stopped: true,
+            model: data.meta?.agentMeta?.model || null,
+            toolCalls: data.toolCalls || []
+          });
+          if (isConversationOpen(sessionId)) {
+            addMessage(data.response || '已停止当前运行。', 'assistant');
+          }
+        } else if (data.connected === false) {
           // 错误情况
           completeRunStatus(thinkingId, {
             error: true,
             model: data.meta?.agentMeta?.model || null,
             toolCalls: data.toolCalls || []
           });
-          addMessage(data.response, 'error');
-          await appendToMemoryRaw(sessionId, { type: 'error', text: data.response, time: new Date().toISOString() });
+          const state = activeRunStatuses[thinkingId];
+          if (state) state.renderedResult = true;
+          if (isConversationOpen(sessionId)) {
+            addMessage(data.response, 'error');
+          }
         } else {
           // 成功响应
           const response = data.response || 'OpenClaw 已处理';
@@ -2762,127 +3445,260 @@
             model: data.meta?.agentMeta?.model || null,
             toolCalls: data.toolCalls || []
           });
-          
-          addMessage(response, 'assistant');
-          await appendToMemoryRaw(sessionId, { type: 'assistant', text: response, time: new Date().toISOString() });
-          
-          // 如果有 meta 信息（思考过程），显示在记忆面板
-          if (data.meta) {
-            await appendToMemoryRaw(sessionId, { 
-              type: 'meta', 
-              text: `⏱️ 耗时：${(data.meta.durationMs / 1000).toFixed(1)}s | 🤖 模型：${data.meta.agentMeta?.model || 'unknown'}`, 
-              time: new Date().toISOString() 
-            });
+          const state = activeRunStatuses[thinkingId];
+          if (state) {
+            state.renderedResult = true;
           }
-          
-          // 如果有 tool calls，也记录到记忆
-          if (data.toolCalls && data.toolCalls.length > 0) {
-            await appendToMemoryRaw(sessionId, { 
-              type: 'tools', 
-              text: `🔧 调用工具：${data.toolCalls.map(t => t.name).join(', ')}`, 
-              time: new Date().toISOString() 
-            });
+          if (isConversationOpen(sessionId)) {
+            addMessage(response, 'assistant');
           }
         }
         
         // 更新记忆面板显示
-        renderMemoryPanel(sessionId);
+        await renderMemoryPanel(sessionId);
+        updateConversationActionState(sessionId);
       } catch (e) {
-        completeRunStatus(thinkingId, { error: true });
+        const fallbackStatusId = Object.values(activeRunStatuses)
+          .find((state) => state.sessionId === sessionId && !state.finishedAt)?.id;
+        if (fallbackStatusId) {
+          completeRunStatus(fallbackStatusId, { error: true });
+        }
         const errorMsg = `调用 OpenClaw 失败：${e.message}`;
-        addMessage(errorMsg, 'error');
+        if (isConversationOpen(sessionId)) {
+          addMessage(errorMsg, 'error');
+        }
         await appendToMemoryRaw(sessionId, { type: 'error', text: errorMsg, time: new Date().toISOString() });
-        renderMemoryPanel(sessionId);
+        await renderMemoryPanel(sessionId);
+        updateConversationActionState(sessionId);
       }
     }
     
     // 添加思考中消息
-    function addThinkingMessage() {
-      const messagesDiv = document.getElementById('conversationMessages');
-      const thinkingId = `run-status-${Date.now()}-${++runStatusSeed}`;
-      const startedAt = Date.now();
-      
-      const messageDiv = document.createElement('div');
-      messageDiv.className = 'message assistant';
-      messageDiv.id = thinkingId;
-      messageDiv.innerHTML = `
-        <div class="message-avatar">🤖</div>
-        <div class="message-content">
-          <div style="border: 1px solid rgba(35,71,211,0.16); background: linear-gradient(180deg, rgba(35,71,211,0.05), rgba(255,255,255,0.92)); border-radius: 16px; padding: 12px 14px; box-shadow: 0 12px 28px rgba(31,38,50,0.04);">
-            <div class="run-status-summary" style="display: flex; align-items: center; justify-content: space-between; gap: 10px;"></div>
-            <div class="run-status-steps" style="margin-top: 8px;"></div>
-            <div class="run-status-badges"></div>
-          </div>
-          <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
-        </div>
-      `;
-      messagesDiv.appendChild(messageDiv);
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
-
-      activeRunStatuses[thinkingId] = {
-        id: thinkingId,
-        startedAt,
-        title: '准备运行',
-        steps: [
-          {
-            label: '准备上下文',
-            state: 'active',
-            startedAt
-          }
-        ],
-        toolCalls: []
-      };
-
-      renderRunStatus(thinkingId);
-
-      activeRunStatuses[thinkingId].interval = setInterval(() => {
-        renderRunStatus(thinkingId);
-      }, 100);
-
-      activeRunStatuses[thinkingId].phaseTimeout = setTimeout(() => {
-        beginRunStatusPhase(thinkingId, 'thinking', '等待 OpenClaw 返回结果');
-        const state = activeRunStatuses[thinkingId];
-        if (!state) return;
-        state.title = 'thinking';
-        renderRunStatus(thinkingId);
-      }, 180);
-
-      activeRunStatuses[thinkingId].waitingTimeout = setTimeout(() => {
-        const state = activeRunStatuses[thinkingId];
-        if (!state || state.finishedAt) return;
-        const activeStep = state.steps.find((step) => step.state === 'active');
-        if (activeStep) {
-          activeStep.detail = '可能正在推理、读文件或等待工具返回';
-        }
-        renderRunStatus(thinkingId);
-      }, 1800);
-
-      return thinkingId;
+    function addThinkingMessage(sessionId) {
+      const runId = `fallback-${Date.now()}`;
+      return attachRunStatusToConversation(sessionId, runId, Date.now());
     }
     
     // 文件上传相关
     let selectedFiles = {};
+
+    function getComposerInput(sessionId) {
+      return document.getElementById(`messageInput_${sessionId}`) || document.getElementById('messageInput');
+    }
+
+    function shouldSendOnDoubleEnter(sessionId) {
+      const now = Date.now();
+      const armedAt = composerSendArmState[sessionId] || 0;
+      if (armedAt && (now - armedAt) < 1200) {
+        composerSendArmState[sessionId] = 0;
+        return true;
+      }
+      composerSendArmState[sessionId] = now;
+      return false;
+    }
+
+    function resetComposerSendArm(sessionId) {
+      composerSendArmState[sessionId] = 0;
+    }
+
+    function resizeComposer(textarea) {
+      if (!textarea) return;
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
+    }
+
+    function formatFileSize(bytes) {
+      const value = Number(bytes) || 0;
+      if (value >= 1024 * 1024) {
+        return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+      }
+      return `${(value / 1024).toFixed(1)} KB`;
+    }
+
+    function getComposerHistoryState(sessionId) {
+      if (!composerHistoryState[sessionId]) {
+        composerHistoryState[sessionId] = { index: -1, draft: '' };
+      }
+      if (!composerHistories[sessionId]) {
+        composerHistories[sessionId] = [];
+      }
+      return composerHistoryState[sessionId];
+    }
+
+    function pushComposerHistory(sessionId, message) {
+      const normalized = String(message || '').trim();
+      if (!normalized) return;
+
+      if (!composerHistories[sessionId]) {
+        composerHistories[sessionId] = [];
+      }
+
+      const history = composerHistories[sessionId];
+      if (history[history.length - 1] !== normalized) {
+        history.push(normalized);
+      }
+
+      composerHistoryState[sessionId] = { index: -1, draft: '' };
+    }
+
+    function navigateComposerHistory(sessionId, direction) {
+      const input = getComposerInput(sessionId);
+      if (!input) return;
+
+      const history = composerHistories[sessionId] || [];
+      if (!history.length) return;
+
+      const state = getComposerHistoryState(sessionId);
+
+      if (direction < 0) {
+        if (state.index === -1) {
+          state.draft = input.value;
+          state.index = history.length - 1;
+        } else if (state.index > 0) {
+          state.index -= 1;
+        }
+      } else {
+        if (state.index === -1) return;
+        if (state.index < history.length - 1) {
+          state.index += 1;
+        } else {
+          state.index = -1;
+          input.value = state.draft || '';
+          resizeComposer(input);
+          return;
+        }
+      }
+
+      input.value = history[state.index] || '';
+      resizeComposer(input);
+      requestAnimationFrame(() => {
+        const end = input.value.length;
+        input.setSelectionRange(end, end);
+      });
+    }
+
+    function renderSelectedFilePreview(sessionId) {
+      const preview = document.getElementById(`filePreview_${sessionId}`);
+      const previewImage = document.getElementById(`filePreviewImage_${sessionId}`);
+      const fileName = document.getElementById(`fileName_${sessionId}`);
+      const fileMeta = document.getElementById(`fileMeta_${sessionId}`);
+      const selected = selectedFiles[sessionId];
+
+      if (!preview || !fileName || !fileMeta) return;
+
+      if (!selected?.file) {
+        preview.classList.remove('active');
+        preview.style.display = '';
+        if (previewImage) {
+          previewImage.src = '';
+          previewImage.style.display = 'none';
+        }
+        fileName.textContent = '';
+        fileMeta.textContent = '';
+        return;
+      }
+
+      preview.classList.add('active');
+      const { file, previewUrl } = selected;
+      fileName.textContent = file.name;
+      fileMeta.textContent = `${file.type || '未知类型'} · ${formatFileSize(file.size)}`;
+
+      if (previewImage) {
+        if (file.type.startsWith('image/') && previewUrl) {
+          previewImage.src = previewUrl;
+          previewImage.style.display = 'block';
+        } else {
+          previewImage.src = '';
+          previewImage.style.display = 'none';
+        }
+      }
+    }
+
+    function bindConversationComposer(sessionId) {
+      const input = getComposerInput(sessionId);
+      if (!input) return;
+
+      resizeComposer(input);
+      input.focus();
+
+      if (input.dataset.bound === 'true') {
+        renderSelectedFilePreview(sessionId);
+        updateConversationActionState(sessionId);
+        return;
+      }
+
+      input.dataset.bound = 'true';
+      input.addEventListener('input', () => {
+        resizeComposer(input);
+        resetComposerSendArm(sessionId);
+        updateConversationActionState(sessionId);
+      });
+
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+          if (getActiveSessionRunId(sessionId)) {
+            event.preventDefault();
+            return;
+          }
+          event.preventDefault();
+          if (!shouldSendOnDoubleEnter(sessionId)) {
+            showToast('再按一次 Enter 发送，或直接点击发送', '#64748b');
+            return;
+          }
+          sendMessage(sessionId);
+          return;
+        }
+
+        if (event.key === 'ArrowUp' && input.selectionStart === 0 && input.selectionEnd === 0) {
+          event.preventDefault();
+          navigateComposerHistory(sessionId, -1);
+          return;
+        }
+
+        if (
+          event.key === 'ArrowDown' &&
+          input.selectionStart === input.value.length &&
+          input.selectionEnd === input.value.length
+        ) {
+          event.preventDefault();
+          navigateComposerHistory(sessionId, 1);
+        }
+      });
+
+      renderSelectedFilePreview(sessionId);
+      updateConversationActionState(sessionId);
+    }
     
     function handleFileSelect(sessionId, input) {
       const file = input.files[0];
       if (!file) return;
-      
-      selectedFiles[sessionId] = file;
-      
-      const preview = document.getElementById(`filePreview_${sessionId}`);
-      const fileName = document.getElementById(`fileName_${sessionId}`);
-      
-      preview.style.display = 'flex';
-      fileName.textContent = `📎 ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+
+      const existing = selectedFiles[sessionId];
+      if (existing?.previewUrl) {
+        URL.revokeObjectURL(existing.previewUrl);
+      }
+
+      selectedFiles[sessionId] = {
+        file,
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+      };
+
+      renderSelectedFilePreview(sessionId);
+      updateConversationActionState(sessionId);
     }
     
     function clearFile(sessionId) {
+      const existing = selectedFiles[sessionId];
+      if (existing?.previewUrl) {
+        URL.revokeObjectURL(existing.previewUrl);
+      }
+
       selectedFiles[sessionId] = null;
-      const input = document.getElementById('fileInput');
+      const input = document.getElementById(`fileInput_${sessionId}`) || document.getElementById('fileInput');
       if (input) input.value = '';
-      
-      const preview = document.getElementById(`filePreview_${sessionId}`);
-      if (preview) preview.style.display = 'none';
+
+      renderSelectedFilePreview(sessionId);
+      updateConversationActionState(sessionId);
     }
     
     async function uploadFile(sessionId, file) {
@@ -2911,45 +3727,57 @@
       });
     }
     
-    // 添加消息到界面
-    function addMessage(text, type, attachments = []) {
+    function renderAttachmentsHtml(attachments = []) {
+      if (!attachments.length) {
+        return '';
+      }
+
+      return `<div style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 8px;">${attachments.map(att => {
+        const ext = att.filename.split('.').pop()?.toLowerCase();
+
+        if (att.mimeType?.startsWith('image/')) {
+          return `<img src="${att.url}" style="max-width: 200px; max-height: 200px; border-radius: 8px; cursor: pointer;" onclick="window.open('${att.url}')">`;
+        } else if (att.mimeType?.startsWith('audio/')) {
+          return `<audio controls src="${att.url}" style="max-width: 300px;"></audio>`;
+        }
+
+        let icon = '📄';
+        let color = '#2347d3';
+        if (['doc','docx'].includes(ext)) { icon = '📘'; color = '#2b579a'; }
+        else if (['xls','xlsx'].includes(ext)) { icon = '📗'; color = '#217346'; }
+        else if (['ppt','pptx'].includes(ext)) { icon = '📙'; color = '#d24726'; }
+        else if (ext === 'pdf') { icon = '📕'; color = '#b30b00'; }
+        else if (['csv','txt','md'].includes(ext)) { icon = '📃'; color = '#5c5c5c'; }
+
+        return `<a href="${att.url}" target="_blank" style="padding: 8px 12px; background: ${color}; color: white; border-radius: 6px; text-decoration: none; font-size: 13px; display: flex; align-items: center; gap: 6px;">${icon} ${escapeHtml(att.filename)}</a>`;
+      }).join('')}</div>`;
+    }
+
+    function appendMessageElement({ text, type, attachments = [], time = null }) {
       const messagesDiv = document.getElementById('conversationMessages');
+      if (!messagesDiv) return;
+
       const messageDiv = document.createElement('div');
       messageDiv.className = `message ${type}`;
-      
-      let attachmentsHtml = '';
-      if (attachments.length > 0) {
-        attachmentsHtml = `<div style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 8px;">${attachments.map(att => {
-          const ext = att.filename.split('.').pop()?.toLowerCase();
-          
-          if (att.mimeType?.startsWith('image/')) {
-            return `<img src="${att.url}" style="max-width: 200px; max-height: 200px; border-radius: 8px; cursor: pointer;" onclick="window.open('${att.url}')">`;
-          } else if (att.mimeType?.startsWith('audio/')) {
-            return `<audio controls src="${att.url}" style="max-width: 300px;"></audio>`;
-          } else {
-            // 根据文件类型显示不同图标
-            let icon = '📄';
-            let color = '#2347d3';
-            if (['doc','docx'].includes(ext)) { icon = '📘'; color = '#2b579a'; }
-            else if (['xls','xlsx'].includes(ext)) { icon = '📗'; color = '#217346'; }
-            else if (['ppt','pptx'].includes(ext)) { icon = '📙'; color = '#d24726'; }
-            else if (ext === 'pdf') { icon = '📕'; color = '#b30b00'; }
-            else if (['csv','txt','md'].includes(ext)) { icon = '📃'; color = '#5c5c5c'; }
-            
-            return `<a href="${att.url}" target="_blank" style="padding: 8px 12px; background: ${color}; color: white; border-radius: 6px; text-decoration: none; font-size: 13px; display: flex; align-items: center; gap: 6px;">${icon} ${att.filename}</a>`;
-          }
-        }).join('')}</div>`;
-      }
-      
+      const timestamp = time
+        ? `<div style="font-size: 11px; color: #999; margin-bottom: 4px;">${escapeHtml(time)}</div>`
+        : '';
+
       messageDiv.innerHTML = `
         <div class="message-avatar">${type === 'user' ? '👤' : type === 'error' ? '❌' : '🤖'}</div>
         <div class="message-content">
-          ${attachmentsHtml}
-          <div style="white-space: pre-wrap;">${text}</div>
+          ${renderAttachmentsHtml(attachments)}
+          ${timestamp}
+          <div style="white-space: pre-wrap;">${escapeHtml(text || '')}</div>
         </div>
       `;
       messagesDiv.appendChild(messageDiv);
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      scrollConversationToBottom();
+    }
+
+    // 添加消息到界面
+    function addMessage(text, type, attachments = []) {
+      appendMessageElement({ text, type, attachments });
     }
     
     // 加载对话记忆
@@ -3003,8 +3831,8 @@
           return;
         }
         
-        // 过滤出用户和助手的对话记录
-        const chatEntries = entries.filter(e => e.type === 'user' || e.type === 'assistant');
+        // 过滤出用户、助手和错误的对话记录
+        const chatEntries = entries.filter(e => e.type === 'user' || e.type === 'assistant' || e.type === 'error');
         
         if (chatEntries.length === 0) {
           // 没有对话记录，显示欢迎消息
@@ -3023,20 +3851,21 @@
         }
         
         // 显示历史对话
-        messagesDiv.innerHTML = chatEntries.map(entry => {
-          const type = entry.type;
-          const time = new Date(entry.time).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-          
-          return `
-            <div class="message ${type}">
-              <div class="message-avatar">${type === 'user' ? '👤' : '🤖'}</div>
-              <div class="message-content">
-                <div style="font-size: 11px; color: #999; margin-bottom: 4px;">${time}</div>
-                <div style="white-space: pre-wrap;">${entry.text}</div>
-              </div>
-            </div>
-          `;
-        }).join('');
+        messagesDiv.innerHTML = '';
+        chatEntries.forEach((entry) => {
+          const time = new Date(entry.time).toLocaleString('zh-CN', {
+            month: 'numeric',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+          appendMessageElement({
+            text: entry.text || '',
+            type: entry.type,
+            attachments: entry.attachments || [],
+            time
+          });
+        });
         
         // 滚动到底部
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -3065,11 +3894,82 @@
         console.error('更新记忆失败:', e);
       }
     }
+
+    function renderWorkingMemoryBlock(hot) {
+      const rows = [
+        { label: '当前目标', value: hot?.goal },
+        { label: '最近结论', value: hot?.latestDecision },
+        { label: '当前阻塞', value: hot?.blocker },
+        { label: '下一步', value: hot?.nextStep }
+      ].filter(item => item.value);
+
+      if (rows.length === 0) {
+        return '';
+      }
+
+      const updatedAt = hot?.updatedAt
+        ? new Date(hot.updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '';
+
+      return `
+        <div style="margin-bottom: 16px; padding: 12px; border: 1px solid rgba(35, 71, 211, 0.14); border-radius: 14px; background: rgba(35, 71, 211, 0.06);">
+          <div style="font-size: 12px; font-weight: 600; color: #2347d3; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <span>当前工作记忆</span>
+            ${updatedAt ? `<span style="font-size: 11px; color: #6b7280;">${escapeHtml(updatedAt)}</span>` : ''}
+          </div>
+          <div style="display: grid; gap: 8px;">
+            ${rows.map(item => `
+              <div style="padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,0.72); border: 1px solid rgba(35, 71, 211, 0.08);">
+                <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">${escapeHtml(item.label)}</div>
+                <div style="font-size: 12px; color: #1e2128; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(item.value)}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderKeyFactsBlock(facts) {
+      const items = Array.isArray(facts?.items) ? facts.items : [];
+      if (items.length === 0) {
+        return '';
+      }
+
+      const labels = {
+        decision: '决策',
+        constraint: '约束',
+        todo: '待办',
+        preference: '偏好'
+      };
+
+      return `
+        <div style="margin-bottom: 16px; padding: 12px; border: 1px solid rgba(17, 24, 39, 0.08); border-radius: 14px; background: rgba(248, 249, 251, 0.92);">
+          <div style="font-size: 12px; font-weight: 600; color: #1b2f78; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+            <span style="width: 8px; height: 8px; background: #1b2f78; border-radius: 50%;"></span>
+            关键事实
+          </div>
+          <div style="display: grid; gap: 8px;">
+            ${items.slice().reverse().map(item => `
+              <div style="padding: 8px 10px; border-radius: 10px; background: white; border: 1px solid #e5e7eb;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
+                  <span style="font-size: 11px; color: #2347d3; font-weight: 600;">${escapeHtml(labels[item.type] || item.type || '事实')}</span>
+                  ${item.time ? `<span style="font-size: 11px; color: #9ca3af;">${escapeHtml(new Date(item.time).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</span>` : ''}
+                </div>
+                <div style="font-size: 12px; color: #1e2128; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(item.text || '')}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
     
     // 渲染记忆面板
     async function renderMemoryPanel(sessionId) {
       try {
-        const data = await api.sessions.getMemory(currentProject, sessionId);
+        const [data, stateData] = await Promise.all([
+          api.sessions.getMemory(currentProject, sessionId),
+          api.sessions.getMemoryState(currentProject, sessionId).catch(() => ({ hot: null, facts: null }))
+        ]);
         
         const panelContent = document.getElementById('memoryPanelContent');
         
@@ -3105,6 +4005,8 @@
         const metaEntries = entries.filter(e => e.type === 'meta');
         
         let html = '';
+        html += renderWorkingMemoryBlock(stateData.hot);
+        html += renderKeyFactsBlock(stateData.facts);
         
         // 渲染未压缩的记忆（新记忆）
         if (uncompressedEntries.length > 0) {
@@ -3219,9 +4121,15 @@
           return;
         }
         
-        // 分离未压缩的记忆和已压缩的记忆
-        const uncompressedEntries = entries.filter(e => e.type !== 'compressed_summary');
         const compressedEntries = entries.filter(e => e.type === 'compressed_summary');
+        const rawEntries = entries.filter(e => e.type !== 'compressed_summary');
+        const latestCompressedEnd = compressedEntries.reduce((latest, entry) => {
+          const candidate = entry?.compressedFrom?.end || entry?.time || '';
+          return candidate && candidate > latest ? candidate : latest;
+        }, '');
+        const uncompressedEntries = latestCompressedEnd
+          ? rawEntries.filter(entry => !entry.time || entry.time > latestCompressedEnd)
+          : rawEntries;
         
         if (uncompressedEntries.length === 0) {
           alert('没有新的未压缩记忆。所有记忆已被压缩过。');
@@ -3251,15 +4159,12 @@
           }
         };
         
-        // 保留已压缩的记忆，追加新的压缩内容
-        const updatedEntries = [...compressedEntries, newCompressedEntry];
-        
-        // 保存更新后的记忆
-        await api.sessions.saveMemory(currentProject, sessionId, JSON.stringify(updatedEntries, null, 2));
+        // 仅追加阶段摘要，保留原始记录
+        await api.sessions.appendEntry(currentProject, sessionId, newCompressedEntry);
         
         // 重新渲染
         await renderMemoryPanel(sessionId);
-        alert(`记忆已压缩！已压缩 ${uncompressedEntries.length} 条记录，当前共有 ${updatedEntries.length} 条压缩记录。`);
+        alert(`记忆已压缩！新增 1 条阶段摘要，已覆盖 ${uncompressedEntries.length} 条新记录，原始记录已保留。`);
       } catch (e) {
         alert('压缩失败：' + e.message);
       }
@@ -3405,7 +4310,9 @@
     }
     
     function insertFileToChat(filePath, fileName) {
-      const input = document.getElementById('messageInput');
+      const modal = document.getElementById('conversationModal');
+      const sessionId = modal?.dataset?.sessionId;
+      const input = sessionId ? getComposerInput(sessionId) : document.getElementById('messageInput');
       if (input) {
         // 从 filePath 中提取实际文件名（去掉时间戳前缀）
         let displayName = fileName;
@@ -3432,6 +4339,7 @@
         }
         
         input.value = input.value ? `${input.value} ${fileText}` : fileText;
+        resizeComposer(input);
         document.getElementById('filesModal').remove();
         input.focus();
       }

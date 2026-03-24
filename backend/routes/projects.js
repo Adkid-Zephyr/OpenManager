@@ -4,12 +4,22 @@ import { join } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import {
+  resolveOpenClawModel,
   PROJECTS_DIR,
   getProjectOrThrow,
   readIndex,
   writeIndex
 } from '../context.js';
 import { countSessions } from '../lib/memory-store.js';
+import {
+  DEFAULT_MODEL,
+  buildDefaultProjectDescription,
+  buildProjectAgentTemplate,
+  buildProjectBootstrapTemplate,
+  buildProjectIdentityTemplate,
+  buildSharedMemoryTemplate,
+  PROJECT_BOOTSTRAP_MARKER
+} from '../lib/project-template.js';
 
 const execAsync = promisify(exec);
 
@@ -34,6 +44,42 @@ function buildAgentSlug(name) {
   return `project-${Buffer.from(name).toString('hex').slice(0, 16)}`;
 }
 
+function shouldRefreshProjectAgentsFile(content) {
+  const value = String(content || '');
+  return !value || value.includes(PROJECT_BOOTSTRAP_MARKER) || value.startsWith('# AGENTS.md - Your Workspace');
+}
+
+function shouldRefreshProjectIdentityFile(content) {
+  const value = String(content || '');
+  return !value || value.includes(PROJECT_BOOTSTRAP_MARKER);
+}
+
+async function syncProjectBootstrapFiles(project, options = {}) {
+  const projectName = project?.name;
+  const projectPath = project?.path;
+  if (!projectName || !projectPath) return;
+
+  const agentId = options.agentId || null;
+  const agentsPath = join(projectPath, 'AGENTS.md');
+  const bootstrapPath = join(projectPath, 'BOOTSTRAP.md');
+  const identityPath = join(projectPath, 'IDENTITY.md');
+
+  const currentAgents = existsSync(agentsPath) ? await readFile(agentsPath, 'utf-8') : '';
+  if (shouldRefreshProjectAgentsFile(currentAgents)) {
+    await writeFile(agentsPath, buildProjectAgentTemplate(projectName, agentId));
+  }
+
+  const currentBootstrap = existsSync(bootstrapPath) ? await readFile(bootstrapPath, 'utf-8') : '';
+  if (!currentBootstrap || currentBootstrap.includes(PROJECT_BOOTSTRAP_MARKER)) {
+    await writeFile(bootstrapPath, buildProjectBootstrapTemplate(projectName));
+  }
+
+  const currentIdentity = existsSync(identityPath) ? await readFile(identityPath, 'utf-8') : '';
+  if (shouldRefreshProjectIdentityFile(currentIdentity)) {
+    await writeFile(identityPath, buildProjectIdentityTemplate(projectName, agentId));
+  }
+}
+
 async function createAndBindProjectAgent(project, config, options = {}) {
   const existingAgents = await listOpenClawAgents();
   const existingIds = new Set(existingAgents.map((agent) => agent.id));
@@ -48,24 +94,38 @@ async function createAndBindProjectAgent(project, config, options = {}) {
   }
 
   const workspacePath = options.workspacePath || config.workspacePath || project.path;
-  const model = options.model || config.model || 'qwen3.5-plus';
+  const model = resolveOpenClawModel(options.model || config.model || DEFAULT_MODEL) || null;
+  const args = [
+    'openclaw',
+    'agents',
+    'add',
+    JSON.stringify(nextId),
+    '--workspace',
+    JSON.stringify(workspacePath)
+  ];
 
-  await execAsync(
-    `openclaw agents add ${JSON.stringify(nextId)} --workspace ${JSON.stringify(workspacePath)} --model ${JSON.stringify(model)} --non-interactive --json`,
-    {
-      timeout: 20000,
-      env: { ...process.env, HOME: process.env.HOME }
-    }
-  );
+  if (model) {
+    args.push('--model', JSON.stringify(model));
+  }
+
+  args.push('--non-interactive', '--json');
+
+  await execAsync(args.join(' '), {
+    timeout: 20000,
+    env: { ...process.env, HOME: process.env.HOME }
+  });
 
   const nextConfig = {
     ...config,
     agentId: nextId,
     workspacePath,
-    model
+    model,
+    runtime: config.runtime || 'gateway',
+    workspaceMode: workspacePath === project.path ? 'project' : 'custom'
   };
 
   await writeFile(join(project.path, '.project.json'), JSON.stringify(nextConfig, null, 2));
+  await syncProjectBootstrapFiles(project, { agentId: nextId });
   return { agentId: nextId, workspacePath, model, config: nextConfig };
 }
 
@@ -115,23 +175,26 @@ export const projectRoutes = {
 
     const config = {
       name,
-      description: description || `${name} 项目`,
+      description: description || buildDefaultProjectDescription(name),
       createdAt: new Date().toISOString(),
       currentSession: null,
-      model: model || 'qwen3.5-plus',
+      model: resolveOpenClawModel(model || DEFAULT_MODEL) || null,
       tags: [],
       agentId: null,
-      workspacePath: workspacePath || null
+      workspacePath: workspacePath || null,
+      runtime: 'gateway',
+      workspaceMode: workspacePath ? 'custom' : 'main'
     };
 
     await writeFile(join(projectDir, '.project.json'), JSON.stringify(config, null, 2));
 
-    const sharedMemory = `# ${name} - 共享记忆\n\n## 项目目标\n\n\n## 架构设计\n\n\n## 关键决策\n\n\n## 通用知识\n\n`;
+    const sharedMemory = buildSharedMemoryTemplate(name);
     await writeFile(join(memoryDir, 'shared.md'), sharedMemory);
     await writeFile(
       join(tasksDir, 'tasks.json'),
       JSON.stringify({ tasks: [], nextId: 1 }, null, 2)
     );
+    await syncProjectBootstrapFiles({ name, path: projectDir }, { agentId: null });
 
     index.projects.push({
       name,
@@ -231,12 +294,17 @@ export const projectRoutes = {
 
     const config = JSON.parse(await readFile(configPath, 'utf-8'));
     const pick = (key, fallback) => Object.prototype.hasOwnProperty.call(body, key) ? body[key] : fallback;
+    const selectedModel = resolveOpenClawModel(pick('model', config.model ?? DEFAULT_MODEL) || DEFAULT_MODEL) || null;
     const nextConfig = {
       ...config,
       description: pick('description', config.description ?? '') ?? '',
       agentId: pick('agentId', config.agentId ?? null),
       workspacePath: pick('workspacePath', config.workspacePath ?? null),
-      model: pick('model', config.model ?? 'qwen3.5-plus') || 'qwen3.5-plus'
+      model: selectedModel,
+      runtime: pick('runtime', config.runtime ?? 'gateway') === 'local' ? 'local' : 'gateway',
+      workspaceMode: ['main', 'project', 'custom'].includes(pick('workspaceMode', config.workspaceMode ?? 'main'))
+        ? pick('workspaceMode', config.workspaceMode ?? 'main')
+        : 'main'
     };
 
     await writeFile(configPath, JSON.stringify(nextConfig, null, 2));

@@ -1,8 +1,19 @@
 (function () {
   function resolveBase() {
+    if (window.PROJECT_WORKSPACE_API_BASE) {
+      return window.PROJECT_WORKSPACE_API_BASE;
+    }
+
+    const apiBaseParam = new URLSearchParams(window.location.search).get('apiBase');
+    if (apiBaseParam) {
+      return apiBaseParam;
+    }
+
+    if (window.location.protocol !== 'file:' && window.location.origin) {
+      return window.location.origin;
+    }
+
     return (
-      window.PROJECT_WORKSPACE_API_BASE ||
-      new URLSearchParams(window.location.search).get('apiBase') ||
       'http://localhost:3456'
     );
   }
@@ -98,6 +109,8 @@
           }),
         getMemory: (project, sessionId) =>
           json(`/api/projects/${project}/sessions/${sessionId}/memory`),
+        getMemoryState: (project, sessionId) =>
+          json(`/api/projects/${project}/sessions/${sessionId}/memory-state`),
         saveMemory: (project, sessionId, content) =>
           json(`/api/projects/${project}/sessions/${sessionId}/memory`, {
             method: 'POST',
@@ -164,12 +177,20 @@
           }),
         chatStatus: (runId, cursor = 0) =>
           json(`/api/openclaw/chat/runs/${encodeURIComponent(runId)}?cursor=${encodeURIComponent(cursor)}`),
+        stopChatRun: (runId) =>
+          json(`/api/openclaw/chat/runs/${encodeURIComponent(runId)}/stop`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          }),
+        chatSessionRun: (project, sessionId, cursor = 0) =>
+          json(`/api/openclaw/chat/session/${encodeURIComponent(sessionId)}?project=${encodeURIComponent(project || '')}&cursor=${encodeURIComponent(cursor)}`),
         chat: (payload) =>
           json('/api/openclaw/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
           }),
+        runtime: () => json('/api/openclaw/runtime'),
         agents: () => json('/api/openclaw/agents'),
         models: () => json('/api/openclaw/models'),
         logs: () => json('/api/openclaw/logs'),

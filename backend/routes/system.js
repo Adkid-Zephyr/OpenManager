@@ -69,7 +69,7 @@ export const systemRoutes = {
         success: true,
         name,
         enabled,
-        note: '技能状态已写入 openclaw.json。新会话会使用更新后的技能快照。'
+        note: '技能状态已写入当前用户的 OpenClaw 全局配置。新会话会使用更新后的技能快照。'
       };
     } catch (error) {
       return { success: false, error: error.message };

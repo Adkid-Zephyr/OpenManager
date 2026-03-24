@@ -1,0 +1,28 @@
+{
+  "name": "openmanager",
+  "version": "0.1.0",
+  "description": "Local project workspace manager built for OpenClaw.",
+  "type": "module",
+  "private": false,
+  "bin": {
+    "openmanager": "./cli.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node backend/server.js",
+    "sync:compat": "node scripts/sync-compat.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "test": "npm run smoke"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "openclaw",
+    "workspace",
+    "agent",
+    "project-manager",
+    "local-first"
+  ],
+  "license": "MIT"
+}

@@ -1,4 +1,4 @@
-import { appendFile, readFile, readdir, stat, unlink, writeFile } from 'fs/promises';
+import { appendFile, open, readFile, readdir, stat, unlink, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
@@ -20,8 +20,198 @@ function getSessionPaths(projectPath, sessionId) {
     meta: `${base}.meta.json`,
     jsonl: `${base}.jsonl`,
     summary: `${base}.summary.md`,
+    hot: `${base}.hot.json`,
+    facts: `${base}.facts.json`,
     legacy: `${base}.md`
   };
+}
+
+function createEmptyHotState() {
+  return {
+    goal: '',
+    latestDecision: '',
+    blocker: '',
+    nextStep: '',
+    recent: [],
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function createEmptyFactsState() {
+  return {
+    items: [],
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function normalizeInlineText(text) {
+  return String(text || '')
+    .replace(/\r/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function trimForMemory(text, limit = 200) {
+  const normalized = normalizeInlineText(text);
+  if (!normalized || normalized.length <= limit) {
+    return normalized;
+  }
+  return `${normalized.slice(0, limit - 1).trim()}…`;
+}
+
+function normalizeRecentEntry(entry) {
+  return {
+    type: entry?.type || 'unknown',
+    time: entry?.time || null,
+    text: trimForMemory(entry?.text || '', 180)
+  };
+}
+
+function extractTextSegments(text) {
+  const value = String(text || '').replace(/\r/g, '');
+  const lines = value
+    .split('\n')
+    .map((line) => line.replace(/^#+\s*/, '').replace(/^[-*]\s*/, '').trim())
+    .filter((line) => line.length >= 4);
+
+  const sentences = value
+    .replace(/\n+/g, '。')
+    .split(/[。！？!?]/)
+    .map((segment) => segment.replace(/^#+\s*/, '').replace(/^[-*]\s*/, '').trim())
+    .filter((segment) => segment.length >= 6);
+
+  return [...lines, ...sentences];
+}
+
+function pickFirstMatch(text, patterns) {
+  const segments = extractTextSegments(text);
+  return segments.find((segment) => patterns.some((pattern) => pattern.test(segment))) || '';
+}
+
+function buildHotState(entries) {
+  const hot = createEmptyHotState();
+  const relevant = entries.filter((entry) =>
+    ['user', 'assistant', 'error', 'compressed_summary'].includes(entry?.type)
+  );
+
+  const latestUser = [...relevant].reverse().find((entry) => entry.type === 'user');
+  const latestAssistant = [...relevant].reverse().find((entry) =>
+    ['assistant', 'compressed_summary'].includes(entry.type)
+  );
+  const latestError = [...relevant].reverse().find((entry) => entry.type === 'error');
+
+  hot.goal = trimForMemory(latestUser?.text || '', 220);
+
+  const decisionCandidate = pickFirstMatch(latestAssistant?.text || '', [
+    /决定/,
+    /改为/,
+    /采用/,
+    /保留/,
+    /切换/,
+    /确认/,
+    /完成/,
+    /已(?:经)?(?:改|切换|同步|修复|支持)/
+  ]);
+  hot.latestDecision = trimForMemory(decisionCandidate || latestAssistant?.text || '', 220);
+
+  hot.blocker = trimForMemory(latestError?.text || '', 200);
+
+  const nextStepCandidate = pickFirstMatch(latestAssistant?.text || '', [
+    /下一步/,
+    /接下来/,
+    /建议/,
+    /可以/,
+    /需要/,
+    /待办/,
+    /后续/
+  ]);
+  hot.nextStep = trimForMemory(
+    nextStepCandidate || (latestError ? '先处理最近一次错误或中断，再继续当前任务。' : ''),
+    200
+  );
+
+  hot.recent = relevant.slice(-6).map(normalizeRecentEntry);
+  hot.updatedAt = new Date().toISOString();
+  return hot;
+}
+
+const FACT_RULES = [
+  {
+    type: 'decision',
+    patterns: [/决定/, /改为/, /采用/, /保留/, /切换/, /选定/, /确认/, /回退/]
+  },
+  {
+    type: 'constraint',
+    patterns: [/不要/, /不能/, /必须/, /只(?:能|保留)/, /限制/, /优先/, /避免/]
+  },
+  {
+    type: 'todo',
+    patterns: [/待办/, /下一步/, /接下来/, /后续/, /TODO/i, /需要/, /继续/]
+  },
+  {
+    type: 'preference',
+    patterns: [/希望/, /喜欢/, /更喜欢/, /想要/, /偏好/, /不喜欢/, /满意/]
+  }
+];
+
+function isSimilarFactText(left, right) {
+  const a = normalizeInlineText(left).toLowerCase();
+  const b = normalizeInlineText(right).toLowerCase();
+  if (!a || !b) {
+    return false;
+  }
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+function buildFactsState(entries) {
+  const items = [];
+  const seen = new Set();
+  const candidates = entries
+    .filter((entry) => ['user', 'assistant', 'compressed_summary', 'error'].includes(entry?.type))
+    .slice(-40);
+
+  for (const entry of candidates) {
+    for (const segment of extractTextSegments(entry?.text || '')) {
+      for (const rule of FACT_RULES) {
+        if (!rule.patterns.some((pattern) => pattern.test(segment))) {
+          continue;
+        }
+
+        const text = trimForMemory(segment, 180);
+        if (!text) {
+          continue;
+        }
+
+        const key = `${rule.type}:${text}`;
+        if (
+          seen.has(key) ||
+          items.some((item) => item.type === rule.type && isSimilarFactText(item.text, text))
+        ) {
+          continue;
+        }
+
+        seen.add(key);
+        items.push({
+          type: rule.type,
+          text,
+          time: entry?.time || null,
+          sourceType: entry?.type || 'unknown'
+        });
+        break;
+      }
+    }
+  }
+
+  return {
+    items: items.slice(-12),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+async function writeDerivedMemory(projectPath, sessionId, entries) {
+  const { hot, facts } = getSessionPaths(projectPath, sessionId);
+  await writeFile(hot, JSON.stringify(buildHotState(entries), null, 2));
+  await writeFile(facts, JSON.stringify(buildFactsState(entries), null, 2));
 }
 
 function extractTitleFromMarkdown(content, sessionId) {
@@ -119,6 +309,7 @@ async function migrateLegacyIfNeeded(projectPath, sessionId) {
     if (currentEntries.length === 0 && Array.isArray(legacyEntries) && legacyEntries.length > 0) {
       await writeFile(paths.jsonl, entriesToJsonl(legacyEntries));
       await writeFile(paths.summary, buildSummaryMarkdown(meta, legacyEntries));
+      await writeDerivedMemory(projectPath, sessionId, legacyEntries);
       return meta;
     }
 
@@ -126,18 +317,23 @@ async function migrateLegacyIfNeeded(projectPath, sessionId) {
       const entries = currentEntries;
       await writeFile(paths.summary, buildSummaryMarkdown(meta, entries));
     }
+    if (!existsSync(paths.hot) || !existsSync(paths.facts)) {
+      await writeDerivedMemory(projectPath, sessionId, currentEntries);
+    }
     return meta;
   }
 
   if (!existsSync(paths.legacy)) {
     await writeFile(paths.jsonl, '');
     await writeFile(paths.summary, buildSummaryMarkdown(meta, []));
+    await writeDerivedMemory(projectPath, sessionId, []);
     return meta;
   }
 
   if (Array.isArray(legacyEntries)) {
     await writeFile(paths.jsonl, entriesToJsonl(legacyEntries));
     await writeFile(paths.summary, buildSummaryMarkdown(meta, legacyEntries));
+    await writeDerivedMemory(projectPath, sessionId, legacyEntries);
     return meta;
   }
 
@@ -146,6 +342,7 @@ async function migrateLegacyIfNeeded(projectPath, sessionId) {
     : legacyContent.trim();
   await writeFile(paths.jsonl, '');
   await writeFile(paths.summary, `# ${meta.name}\n\n${legacyBody || '暂无摘要。'}\n`);
+  await writeDerivedMemory(projectPath, sessionId, []);
   return meta;
 }
 
@@ -197,6 +394,8 @@ export async function createSessionStore(projectPath, sessionId, displayName) {
   await writeFile(paths.meta, JSON.stringify(meta, null, 2));
   await writeFile(paths.jsonl, '');
   await writeFile(paths.summary, `# ${displayName}\n\n暂无摘要。\n`);
+  await writeFile(paths.hot, JSON.stringify(createEmptyHotState(), null, 2));
+  await writeFile(paths.facts, JSON.stringify(createEmptyFactsState(), null, 2));
   return meta;
 }
 
@@ -235,6 +434,7 @@ export async function writeSessionEntries(projectPath, sessionId, entries) {
 
   await writeFile(paths.jsonl, entriesToJsonl(entries));
   await writeFile(paths.summary, buildSummaryMarkdown(meta, entries));
+  await writeDerivedMemory(projectPath, sessionId, entries);
 }
 
 export async function appendSessionEntry(projectPath, sessionId, entry) {
@@ -242,9 +442,11 @@ export async function appendSessionEntry(projectPath, sessionId, entry) {
   const paths = getSessionPaths(projectPath, sessionId);
   await appendFile(paths.jsonl, `${JSON.stringify(entry)}\n`);
 
+  const entries = await readSessionEntries(projectPath, sessionId, false);
+  await writeDerivedMemory(projectPath, sessionId, entries);
+
   if (entry?.type === 'compressed_summary') {
     const meta = await readSessionMeta(projectPath, sessionId);
-    const entries = await readSessionEntries(projectPath, sessionId, false);
     await writeFile(paths.summary, buildSummaryMarkdown(meta, entries));
   }
 }
@@ -275,7 +477,69 @@ export async function readSessionSummary(projectPath, sessionId) {
   return readFile(summary, 'utf-8');
 }
 
+export async function readSessionHotState(projectPath, sessionId) {
+  await migrateLegacyIfNeeded(projectPath, sessionId);
+  const { hot } = getSessionPaths(projectPath, sessionId);
+  if (!existsSync(hot)) {
+    return createEmptyHotState();
+  }
+  return safeParseJson(await readFile(hot, 'utf-8'), createEmptyHotState());
+}
+
+export async function readSessionFactsState(projectPath, sessionId) {
+  await migrateLegacyIfNeeded(projectPath, sessionId);
+  const { facts } = getSessionPaths(projectPath, sessionId);
+  if (!existsSync(facts)) {
+    return createEmptyFactsState();
+  }
+  return safeParseJson(await readFile(facts, 'utf-8'), createEmptyFactsState());
+}
+
+async function readLastEntriesFromJsonl(jsonlPath, limit) {
+  if (!existsSync(jsonlPath)) {
+    return [];
+  }
+
+  const handle = await open(jsonlPath, 'r');
+  try {
+    const stats = await handle.stat();
+    if (!stats.size) {
+      return [];
+    }
+
+    let position = stats.size;
+    let buffer = '';
+    let lines = [];
+    const chunkSize = 4096;
+
+    while (position > 0 && lines.filter(Boolean).length <= limit) {
+      const size = Math.min(chunkSize, position);
+      position -= size;
+      const chunk = Buffer.alloc(size);
+      await handle.read(chunk, 0, size, position);
+      buffer = chunk.toString('utf8') + buffer;
+      lines = buffer.split('\n');
+    }
+
+    return lines
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(-limit)
+      .map((line) => safeParseJson(line, null))
+      .filter(Boolean);
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function getRecentSessionEntries(projectPath, sessionId, limit = 8) {
-  const entries = await readSessionEntries(projectPath, sessionId);
+  await migrateLegacyIfNeeded(projectPath, sessionId);
+  const { jsonl } = getSessionPaths(projectPath, sessionId);
+  const recent = await readLastEntriesFromJsonl(jsonl, limit);
+  if (recent.length > 0) {
+    return recent;
+  }
+
+  const entries = await readSessionEntries(projectPath, sessionId, false);
   return entries.slice(-limit);
 }

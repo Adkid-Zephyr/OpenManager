@@ -183,6 +183,127 @@
       color: var(--ink);
       letter-spacing: 0.02em;
     }
+    .diagram-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .diagram-card {
+      padding: 16px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.7);
+      border: 1px solid var(--line);
+    }
+    .diagram-card h3 {
+      margin: 0 0 10px;
+      font-size: 15px;
+      color: var(--ink);
+      letter-spacing: 0.02em;
+    }
+    .diagram-flow {
+      display: grid;
+      gap: 10px;
+    }
+    .diagram-node {
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(35, 71, 211, 0.06);
+      border: 1px solid rgba(35, 71, 211, 0.14);
+      color: var(--ink);
+    }
+    .diagram-node strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 13px;
+      color: var(--accent-strong);
+      letter-spacing: 0.02em;
+    }
+    .manual-shot-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .manual-shot-card {
+      padding: 16px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.72);
+      border: 1px solid var(--line);
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+    .manual-shot-card strong {
+      display: block;
+      font-size: 14px;
+      color: var(--ink);
+      letter-spacing: 0.02em;
+    }
+    .manual-shot-card img {
+      width: 100%;
+      display: block;
+      border-radius: 14px;
+      border: 1px solid rgba(30,33,40,0.08);
+      background: #f3f4f6;
+      box-shadow: 0 10px 28px rgba(31, 38, 50, 0.08);
+    }
+    .manual-shot-card p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--ink-soft);
+      line-height: 1.7;
+    }
+    .manual-shot-card .shot-note {
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(35, 71, 211, 0.06);
+      border: 1px solid rgba(35, 71, 211, 0.1);
+      color: var(--ink-soft);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .manual-shot-card.tip-card {
+      background: rgba(248, 249, 251, 0.92);
+    }
+    .diagram-node span {
+      display: block;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--ink-soft);
+    }
+    .diagram-arrow {
+      text-align: center;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1;
+    }
+    .diagram-rail {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .diagram-rail .diagram-node {
+      background: rgba(248, 249, 251, 0.92);
+      border-color: rgba(17, 24, 39, 0.08);
+      text-align: center;
+    }
+    .callout {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(35, 71, 211, 0.06);
+      border: 1px solid rgba(35, 71, 211, 0.12);
+    }
+    .callout strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--accent-strong);
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
     ::-webkit-scrollbar {
       width: 10px;
       height: 10px;
@@ -198,7 +319,7 @@
       background-clip: padding-box;
     }
     @media (max-width: 920px) {
-      .hero, .grid, .mini-grid {
+      .hero, .grid, .mini-grid, .diagram-grid, .diagram-rail {
         grid-template-columns: 1fr;
       }
       .toc {
@@ -215,17 +336,21 @@
     <div class="hero">
       <section class="card hero-main">
         <div class="pill">OpenManager Handbook</div>
-        <h1>本地项目工作台<br>使用与设计手册</h1>
-        <p>OpenManager 的目标不是做一个华而不实的前端壳，而是把“项目、会话、共享记忆、任务、agent 绑定、本地文件系统”这些长期工作流真正揉成一个可持续使用的工作台。当前版本已经按“前后端分离、数据本地存储、后续可开源”这个方向整理过一轮。</p>
+        <h1>本地项目工作台<br>使用手册</h1>
+        <p>OpenManager 是为 OpenClaw 设计的本地项目工作台。它把“项目、会话、记忆、任务、文件、agent 绑定”放进同一个持续使用的容器里，重点解决两件事：多线并行时别串线，和长期工作时别忘事。</p>
       </section>
       <aside class="card hero-side">
         <div class="mini">
-          <strong>当前定位</strong>
-          <p>先作为 GitHub 开源项目维护，再收敛为一个 OpenClaw skill。</p>
+          <strong>最适合谁</strong>
+          <p>同时推进多个项目、需要长期上下文、又不想把所有内容堆进一条聊天记录的人。</p>
         </div>
         <div class="mini">
           <strong>运行方式</strong>
           <p>前端静态页面 + 本地 Node API + OpenClaw CLI / Gateway。</p>
+        </div>
+        <div class="mini">
+          <strong>核心价值</strong>
+          <p>多线并行更清楚，记忆管理更稳定，项目上下文更容易持续积累。</p>
         </div>
       </aside>
     </div>
@@ -233,116 +358,362 @@
     <div class="grid">
       <nav class="card toc">
         <h2>目录</h2>
-        <a href="#goal">1. 设计目标</a>
-        <a href="#structure">2. 结构组成</a>
-        <a href="#data">3. 数据与记忆</a>
-        <a href="#agent">4. Agent 绑定方式</a>
-        <a href="#ui">5. 前端主要功能</a>
-        <a href="#cron">6. Cron 与 Skills</a>
-        <a href="#dev">7. 开发与开源建议</a>
+        <a href="#intro">1. 这是什么</a>
+        <a href="#scenarios">2. 适合什么场景</a>
+        <a href="#quickstart">3. 快速开始</a>
+        <a href="#parallel">4. 多线并行怎么用</a>
+        <a href="#memory">5. 记忆系统怎么用</a>
+        <a href="#structure">6. 产品结构图</a>
+        <a href="#flow">7. 对话与文件流转</a>
+        <a href="#extras">8. Cron、Skills 与后续方向</a>
       </nav>
 
       <main class="content">
-        <section class="card" id="goal">
-          <h2>1. 设计目标</h2>
-          <p>核心思路是“每个项目一个上下文容器，每个对话一个工作线程”。项目承载共享记忆、任务、文件和 agent 绑定；会话承载单条线程的对话与局部记忆。这样既保留长期上下文，也避免不同对话互相污染。</p>
+        <section class="card" id="intro">
+          <h2>1. 这是什么</h2>
+          <p>OpenManager 不是一个泛泛的“项目列表”，而是一个面向 OpenClaw 的本地项目工作台。你可以把它理解成：一个项目就是一个长期上下文容器，一个会话就是项目里的单条工作线程，一个 agent 则是这个项目的执行边界。</p>
           <div class="mini-grid">
             <div class="mini">
-              <strong>保留原始前端体验</strong>
-              <p>不推翻你已经习惯的界面和交互，只在内部结构上做模块化和解耦。</p>
+              <strong>项目 = 长期工作容器</strong>
+              <p>放项目目标、共享记忆、任务、文件、模型设置和 agent 绑定。</p>
             </div>
             <div class="mini">
-              <strong>适合长期维护</strong>
-              <p>源码、运行时数据、OpenClaw 配置和项目数据彼此分层，后面开源时更容易整理。</p>
+              <strong>会话 = 当前工作线程</strong>
+              <p>把“需求梳理”“接口联调”“发布收尾”拆成不同线程，避免信息互相污染。</p>
+            </div>
+            <div class="mini">
+              <strong>记忆 = 持续上下文</strong>
+              <p>既保留完整原始记录，也尽量把当前目标、关键事实和摘要提炼出来。</p>
+            </div>
+            <div class="mini">
+              <strong>Agent = 执行边界</strong>
+              <p>正式项目可以绑定自己的 agent、workspace 和模型，不用和其他项目抢上下文。</p>
             </div>
           </div>
         </section>
 
-        <section class="card" id="structure">
-          <h2>2. 结构组成</h2>
-          <p>当前项目已经分成静态前端和 API 后端两层。前端负责界面和交互，后端负责本地文件、项目数据、Cron、Skills 和 OpenClaw CLI 调用。</p>
-          <div class="code">skills/project-workspace/
-├── app.html
-├── api.js
-├── manual.html
-├── frontend/
-│   ├── index.html
-│   ├── api.js
-│   └── manual.html
-└── backend/
-    ├── server.js
-    ├── routes/
-    └── lib/</div>
+        <section class="card" id="scenarios">
+          <h2>2. 适合什么场景</h2>
+          <p>这套产品特别适合下面这些情况：</p>
+          <ul>
+            <li>你同时维护多个项目，不想把 A 项目的上下文带进 B 项目。</li>
+            <li>一个项目会持续很多天甚至很多周，需要长期保存目标、约束、任务和关键结论。</li>
+            <li>同一个项目里又有多个阶段，想把“规划、执行、排查、收尾”分成不同会话。</li>
+            <li>你希望项目相关的文件、上传资料、对话和记忆都落在同一处，而不是分散在多个工具里。</li>
+          </ul>
+          <div class="callout">
+            <strong>一句话判断</strong>
+            如果你经常需要重新解释背景、找回上次做到哪里、或者担心多个项目串线，OpenManager 就很适合你。
+          </div>
         </section>
 
-        <section class="card" id="data">
-          <h2>3. 数据与记忆</h2>
-          <p>项目数据仍然放在本地 `projects/` 下。每个项目使用文件夹作为边界，这和你一开始“本地文件系统是后端”的设计初衷一致。</p>
+        <section class="card" id="quickstart">
+          <h2>3. 快速开始</h2>
+          <p>第一次使用时，推荐按下面的顺序来，而不是一上来就堆很多对话：</p>
+          <div class="diagram-grid">
+            <div class="diagram-card">
+              <h3>步骤 1：创建项目</h3>
+              <p>项目名建议写成长期主题，例如“官网改版”“数据看板”“内容选题库”。项目描述写成一句话目标，方便后面快速识别。</p>
+            </div>
+            <div class="diagram-card">
+              <h3>步骤 2：补共享记忆</h3>
+              <p>先写项目目标、成功标准、当前范围、关键背景和下一步。这样后面每个会话都能继承这些长期信息。</p>
+            </div>
+            <div class="diagram-card">
+              <h3>步骤 3：新建会话</h3>
+              <p>会话名建议写成当前阶段，例如“需求梳理”“接口联调”“问题排查”“发布收尾”。</p>
+            </div>
+            <div class="diagram-card">
+              <h3>步骤 4：开始工作</h3>
+              <p>把任务拆到任务列表，把参考资料传到上传区，把当前阶段的对话都放进对应会话里持续推进。</p>
+            </div>
+          </div>
+          <div class="mini-grid">
+            <div class="mini">
+              <strong>轻量项目怎么用</strong>
+              <p>直接用默认 main，不单独绑定 agent，适合短期整理和轻任务。</p>
+            </div>
+            <div class="mini">
+              <strong>正式项目怎么用</strong>
+              <p>给项目绑定自己的 agent、workspace 和模型，让每个项目成为独立工作环境。</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" id="parallel">
+          <h2>4. 多线并行怎么用</h2>
+          <p>OpenManager 最重要的价值之一，就是把“多个项目并行”和“一个项目内多个线程并行”都整理清楚。推荐的使用节奏是：</p>
+          <div class="diagram-card">
+            <h3>推荐工作流</h3>
+            <div class="diagram-flow">
+              <div class="diagram-node">
+                <strong>一个长期项目 = 一个 Project</strong>
+                <span>例如「官网改版」和「数据看板」不要混在同一个项目里。</span>
+              </div>
+              <div class="diagram-node">
+                <strong>一个阶段 = 一个 Session</strong>
+                <span>把规划、执行、排查、收尾拆成不同会话，方便专注和回看。</span>
+              </div>
+              <div class="diagram-node">
+                <strong>一个正式项目 = 一个 Agent</strong>
+                <span>需要独立 workspace 和持续执行能力时，就绑定自己的 agent。</span>
+              </div>
+              <div class="diagram-node">
+                <strong>多个窗口并行</strong>
+                <span>可以同时开多个项目窗口，让不同工作流保持隔离，不必来回切上下文。</span>
+              </div>
+            </div>
+          </div>
+          <div class="mini-grid">
+            <div class="mini">
+              <strong>推荐</strong>
+              <p>项目按长期主题拆分；会话按当前阶段拆分；任务按可执行动作拆分。</p>
+            </div>
+            <div class="mini">
+              <strong>不推荐</strong>
+              <p>把所有工作都堆到一个项目、一个会话、一个长对话里，再靠搜索回忆过去发生了什么。</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" id="memory">
+          <h2>5. 记忆系统怎么用</h2>
+          <p>记忆系统不是为了“存更多”，而是为了“少重复、少丢信息、少串线”。对于用户来说，你只需要记住下面这几个层次分别负责什么：</p>
           <div class="code">projects/&lt;project&gt;/
 ├── .project.json
 ├── memory/
 │   ├── shared.md
 │   ├── session-xxx.meta.json
 │   ├── session-xxx.jsonl
+│   ├── session-xxx.hot.json
+│   ├── session-xxx.facts.json
 │   └── session-xxx.summary.md
 └── tasks/tasks.json</div>
           <ul>
-            <li>`shared.md`：项目级共享记忆，适合放目标、约束、架构决策。</li>
-            <li>`session-xxx.jsonl`：原始消息流，便于程序追加写入。</li>
-            <li>`session-xxx.summary.md`：对话摘要层，避免每轮都塞完整历史。</li>
-            <li>`tasks.json`：任务共享层，不再默认全量注入每一轮消息。</li>
+            <li>`shared.md`：项目共享背景。适合放目标、规则、约束、长期约定。</li>
+            <li>`session-xxx.jsonl`：原始对话流。完整保留，方便追查真实上下文。</li>
+            <li>`session-xxx.hot.json`：当前工作记忆。让系统快速知道你现在做到哪了。</li>
+            <li>`session-xxx.facts.json`：关键事实层。把决策、约束、偏好、待办提出来。</li>
+            <li>`session-xxx.summary.md`：阶段摘要。帮助跨轮次快速接续，而不是每次重读全历史。</li>
+            <li>`tasks.json`：项目任务层。适合放真正要执行的动作，而不是把 todo 埋在长对话里。</li>
           </ul>
+          <div class="diagram-grid">
+            <div class="diagram-card">
+              <h3>Memory 分层结构图</h3>
+              <div class="diagram-flow">
+                <div class="diagram-node">
+                  <strong>shared.md</strong>
+                  <span>项目长期背景：目标、规则、上下文、长期约定</span>
+                </div>
+                <div class="diagram-arrow">↓</div>
+                <div class="diagram-node">
+                  <strong>session.jsonl</strong>
+                  <span>原始事件流：用户、助手、错误、工具和阶段摘要事件</span>
+                </div>
+                <div class="diagram-arrow">↓</div>
+                <div class="diagram-node">
+                  <strong>session.hot.json + session.facts.json</strong>
+                  <span>当前工作记忆 + 关键事实：服务快速续接和避免忘事</span>
+                </div>
+                <div class="diagram-arrow">↓</div>
+                <div class="diagram-node">
+                  <strong>session.summary.md</strong>
+                  <span>阶段摘要：服务跨轮次压缩、人工回看和快速交接</span>
+                </div>
+              </div>
+            </div>
+            <div class="diagram-card">
+              <h3>每轮对话怎么取记忆</h3>
+              <div class="diagram-flow">
+                <div class="diagram-node">
+                  <strong>1. 读项目背景</strong>
+                  <span>先拿 `shared.md`，保证项目目标和长期规则不丢。</span>
+                </div>
+                <div class="diagram-node">
+                  <strong>2. 读当前工作状态</strong>
+                  <span>优先读 `hot/facts`，快速知道当前目标、结论、阻塞。</span>
+                </div>
+                <div class="diagram-node">
+                  <strong>3. 读会话摘要</strong>
+                  <span>用 `summary` 接上跨阶段上下文，而不是重扫整段历史。</span>
+                </div>
+                <div class="diagram-node">
+                  <strong>4. 尾读 recent</strong>
+                  <span>只从 `jsonl` 末尾取最近几条，补足对话连贯性。</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="callout">
+            <strong>怎么用最有效</strong>
+            共享记忆写长期信息，会话写当前阶段，任务写可执行动作。这样系统才知道哪些信息该长期带着，哪些只属于当前线程。
+          </div>
+          <p>下面这两张图最值得先看：第一张帮你理解项目级记忆该写什么，第二张帮你理解长对话为什么不会越聊越乱。</p>
+          <div class="manual-shot-grid">
+            <div class="manual-shot-card">
+              <strong>共享记忆页</strong>
+              <img src="./docs/screenshots/guide-memory-focus.png" alt="OpenManager shared memory tab">
+              <p>适合在项目刚建立、阶段切换或需求发生明显变化时维护。这里建议只放长期有效的信息，例如目标、成功标准、边界、关键背景和下一步。</p>
+              <div class="shot-note">不要把临时讨论、零散待办和即时聊天记录堆进共享记忆。共享记忆越稳定，后面每个会话续接得越自然。</div>
+            </div>
+            <div class="manual-shot-card">
+              <strong>对话窗口与会话记忆</strong>
+              <img src="./docs/screenshots/guide-conversation-focus.png" alt="OpenManager conversation memory compression">
+              <p>对话窗口右侧会展示当前工作记忆、最近结论和下一步建议。这样即使一个会话已经持续了很久，系统也能先抓住重点，再去补最近对话。</p>
+              <div class="shot-note">这块区域最适合用来判断“现在做到哪了”和“接下来该推进什么”，而不是回头翻整段聊天记录。</div>
+            </div>
+          </div>
+          <div class="manual-shot-grid">
+            <div class="manual-shot-card tip-card">
+              <strong>AI 压缩什么时候用</strong>
+              <p>推荐在一个阶段已经形成稳定结论时再压缩，比如“需求梳理结束”“接口联调告一段落”“排查结论已经明确”。这样生成的摘要更稳，也更适合下次接续。</p>
+              <div class="shot-note">OpenManager 会追加阶段摘要，但不会覆盖原始记录。也就是说，压缩的作用是帮你提炼，不是替你删历史。</div>
+            </div>
+            <div class="manual-shot-card tip-card">
+              <strong>对话管理小技巧</strong>
+              <p>如果一个项目已经从“规划”进入“执行”或“排查”，不要把所有内容都接在同一个会话里。新建一个会话继续推进，再让共享记忆和阶段摘要帮助你接续上下文，会更清楚。</p>
+              <div class="shot-note">一个长期项目通常会有多条会话线程，这正是 OpenManager 避免串线的关键设计。</div>
+            </div>
+          </div>
         </section>
 
-        <section class="card" id="agent">
-          <h2>4. Agent 绑定方式</h2>
-          <p>推荐结构是“每个项目一个 agent，每个对话一个 session”。这样 workspace、模型和能力边界更清晰，也更接近 Dashboard 的真实使用方式。</p>
+        <section class="card" id="structure">
+          <h2>6. 产品结构图</h2>
+          <p>从用户视角看，OpenManager 是“一个前端界面 + 一个本地 API + 一套本地项目文件 + OpenClaw 执行能力”的组合。下面几张图可以帮助你快速理解它的结构。</p>
+          <div class="diagram-grid">
+            <div class="diagram-card">
+              <h3>前端结构图</h3>
+              <div class="diagram-flow">
+                <div class="diagram-node">
+                  <strong>项目列表</strong>
+                  <span>管理多个长期项目，切换当前工作上下文。</span>
+                </div>
+                <div class="diagram-node">
+                  <strong>主工作区</strong>
+                  <span>查看会话、任务、Cron、Skills 和共享记忆。</span>
+                </div>
+                <div class="diagram-node">
+                  <strong>项目信息侧栏</strong>
+                  <span>查看路径、模型、agent 绑定，并进入项目设置。</span>
+                </div>
+              </div>
+            </div>
+            <div class="diagram-card">
+              <h3>项目文件结构图</h3>
+              <div class="diagram-flow">
+                <div class="diagram-node">
+                  <strong>.project.json</strong>
+                  <span>项目配置：描述、当前会话、模型、agent、workspace。</span>
+                </div>
+                <div class="diagram-node">
+                  <strong>memory/</strong>
+                  <span>共享记忆和会话分层记忆文件。</span>
+                </div>
+                <div class="diagram-node">
+                  <strong>tasks/ + uploads/</strong>
+                  <span>项目任务和上传文件统一按项目归档。</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="code">openmanager/
+├── frontend/         # 页面和交互
+├── backend/          # 本地 API、项目读写、OpenClaw 调用
+├── app.html          # 兼容入口
+├── manual.html       # 使用手册
+└── scripts/          # smoke test、同步脚本</div>
+        </section>
+
+        <section class="card" id="flow">
+          <h2>7. 对话与文件流转</h2>
+          <p>这里是 OpenManager 最关键的两条链路：项目对话怎么拉 OpenClaw，文件又是怎么进到项目里的。</p>
+          <div class="diagram-grid">
+            <div class="diagram-card">
+              <h3>项目对话 → OpenClaw 流程图</h3>
+              <div class="diagram-flow">
+                <div class="diagram-node">
+                  <strong>1. 用户发送消息</strong>
+                  <span>消息从前端会话窗口发出，并带上项目和会话信息。</span>
+                </div>
+                <div class="diagram-node">
+                  <strong>2. 后端组装上下文</strong>
+                  <span>拼接共享记忆、工作记忆、关键事实、会话摘要、最近对话和任务摘要。</span>
+                </div>
+                <div class="diagram-node">
+                  <strong>3. 调用 OpenClaw</strong>
+                  <span>根据项目配置走 gateway agent 或本地 codex 执行。</span>
+                </div>
+                <div class="diagram-node">
+                  <strong>4. 写回会话记忆</strong>
+                  <span>结果、阶段状态和后续摘要会回写到 session memory。</span>
+                </div>
+                <div class="diagram-node">
+                  <strong>5. 前端更新界面</strong>
+                  <span>用户看到最新回复，并能继续沿同一项目线程往下做。</span>
+                </div>
+              </div>
+            </div>
+            <div class="diagram-card">
+              <h3>文件上传流程图</h3>
+              <div class="diagram-flow">
+                <div class="diagram-node">
+                  <strong>1. 前端选择文件</strong>
+                  <span>支持把图片或文件上传到当前项目。</span>
+                </div>
+                <div class="diagram-node">
+                  <strong>2. 后端写入 uploads/</strong>
+                  <span>文件会按项目落到 `uploads/` 目录，并生成可访问路径。</span>
+                </div>
+                <div class="diagram-node">
+                  <strong>3. 文件浏览器展示</strong>
+                  <span>前端可以按项目查看上传内容，图片会直接预览。</span>
+                </div>
+                <div class="diagram-node">
+                  <strong>4. 结合会话继续工作</strong>
+                  <span>用户可以围绕这些文件继续聊天、整理任务和推进项目。</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="callout">
+            <strong>为什么这样设计</strong>
+            对话、文件、任务和记忆都按项目归档，最大的好处就是：后面回看、继续做、换人接手时，都更容易找到上下文。
+          </div>
+        </section>
+
+        <section class="card" id="extras">
+          <h2>8. Cron、Skills 与后续方向</h2>
+          <p>Cron 和 Skills 是 OpenManager 里更偏“稳定工作流”的两组能力。它们不是第一次打开就必须配置的内容，但一旦进入正式使用阶段，会很值得投入。</p>
           <ul>
-            <li>项目设置中可以手动绑定已有 agent。</li>
-            <li>创建项目时可以直接自动创建并绑定 agent。</li>
-            <li>绑定信息会写回 `.project.json`，包括 `agentId`、`workspacePath`、`model`。</li>
+            <li>Cron 可以为项目安排定时工作，例如日报、巡检或提醒。</li>
+            <li>Skills 可以控制当前用户在 OpenClaw 中启用哪些能力。</li>
+            <li>修改 Skills 状态后，最稳妥的方式是新建会话再继续工作。</li>
           </ul>
-          <div class="code">{
-  "agentId": "dashboard",
-  "workspacePath": "/Users/xxx/.openclaw/workspace/projects/Dashboard 数据分析项目",
-  "model": "qwen3.5-plus"
-}</div>
-        </section>
-
-        <section class="card" id="ui">
-          <h2>5. 前端主要功能</h2>
-          <ul>
-            <li>项目列表、项目详情、项目设置、新建项目。</li>
-            <li>多会话管理。多窗口方式替代旧的多标签方案。</li>
-            <li>共享记忆查看与编辑。</li>
-            <li>任务列表与完成状态管理。</li>
-            <li>会话对话窗口、附件上传、记忆压缩、文件浏览。</li>
-          </ul>
-          <p>最近这轮还优化了“项目设置”的打开速度，并把新建项目时的 agent 绑定 UI 重新排了版。</p>
-        </section>
-
-        <section class="card" id="cron">
-          <h2>6. Cron 与 Skills</h2>
-          <p>Cron 现在走 OpenClaw 原生命令，支持最基础的创建、启用、禁用、立即运行和删除。Skills 的列表和状态来自 `openclaw skills list --json`，启用/禁用会写入 `~/.openclaw/openclaw.json` 的 `skills.entries`。</p>
-          <div class="code">{
-  "skills": {
-    "entries": {
-      "project-workspace": { "enabled": true },
-      "sag": { "enabled": false }
-    }
-  }
-}</div>
-          <p>注意：OpenClaw 会对技能列表做会话级快照，所以改完技能状态后，新建会话最稳妥。</p>
-        </section>
-
-        <section class="card" id="dev">
-          <h2>7. 开发与开源建议</h2>
-          <ul>
-            <li>把运行时数据和源码严格分开，避免开源仓库混入用户真实项目数据。</li>
-            <li>继续保持 API 路由按领域拆分，减少单文件膨胀。</li>
-            <li>前端可以继续沿着 `api.js + 单页静态 HTML` 方式演进，先保证可维护性，再考虑框架化。</li>
-            <li>如果后续发布到 GitHub，建议补齐 `LICENSE`、`.gitignore`、`CONTRIBUTING.md` 和最小安装说明。</li>
-          </ul>
+          <div class="mini-grid">
+            <div class="mini">
+              <strong>Skills 适合什么时候看</strong>
+              <p>正式项目开始前，先确认当前账号有哪些技能可用、哪些缺依赖、哪些暂时关闭，避免工作到一半才发现能力没开。</p>
+            </div>
+            <div class="mini">
+              <strong>Cron 适合什么时候配</strong>
+              <p>当一个项目已经形成固定节奏，比如每天同步、每周回顾、例行巡检或发布收尾提醒时，再把它们做成重复任务最合适。</p>
+            </div>
+          </div>
+          <div class="manual-shot-grid">
+            <div class="manual-shot-card">
+              <strong>Skills 面板</strong>
+              <img src="./docs/screenshots/guide-skills-focus.png" alt="OpenManager skills tab">
+              <p>这里会把技能分成可用、缺依赖、已禁用等状态，适合快速判断当前用户能调用哪些能力。常用技能保持启用，不常用技能先关闭，会更利于正式工作流保持稳定。</p>
+              <div class="shot-note">如果你刚改完 Skills 状态，建议新建一个会话再继续做事，让新的能力边界从下一轮开始生效。</div>
+            </div>
+            <div class="manual-shot-card">
+              <strong>Cron 面板</strong>
+              <img src="./docs/screenshots/guide-cron-focus.png" alt="OpenManager cron tab">
+              <p>适合把“日报、巡检、每周回顾、收尾提醒”这类固定动作做成重复任务。建议先从 1 到 2 个最稳定的场景开始，等节奏跑顺后再逐步增加。</p>
+              <div class="shot-note">Cron 的价值不在“自动化越多越好”，而在于把那些每次都会做、又容易忘的动作固定下来。</div>
+            </div>
+          </div>
+          <p>后续如果继续演进，这个产品会围绕更顺滑的上手体验、更清楚的上下文组织和更稳定的项目执行体验继续打磨，但整体方向不会变：让多项目并行和长期记忆管理变得更自然。</p>
         </section>
       </main>
     </div>

@@ -1,11 +1,22 @@
 #!/usr/bin/env node
 
 import { readFile, writeFile, mkdir, readdir, rm } from 'fs/promises';
-import { join, dirname } from 'path';
+import { join } from 'path';
 import { homedir } from 'os';
 import { existsSync } from 'fs';
+import {
+  DEFAULT_MODEL,
+  buildDefaultProjectDescription,
+  buildSharedMemoryTemplate
+} from './backend/lib/project-template.js';
 
-const PROJECTS_DIR = join(homedir(), '.openclaw', 'workspace', 'projects');
+const HOME_DIR = process.env.HOME || homedir();
+const OPENCLAW_HOME = process.env.OPENCLAW_HOME || join(HOME_DIR, '.openclaw');
+const WORKSPACE_DIR =
+  process.env.OPENMANAGER_WORKSPACE_DIR ||
+  process.env.OPENCLAW_WORKSPACE_DIR ||
+  join(OPENCLAW_HOME, 'workspace');
+const PROJECTS_DIR = join(WORKSPACE_DIR, 'projects');
 const INDEX_FILE = join(PROJECTS_DIR, '.projects-index.json');
 
 // 颜色输出
@@ -65,30 +76,17 @@ async function createProject(name, description = '') {
   // 创建项目配置
   const config = {
     name,
-    description: description || `${name} 项目`,
+    description: description || buildDefaultProjectDescription(name),
     createdAt: new Date().toISOString(),
     currentSession: null,
-    model: 'qwen3.5-plus',
+    model: DEFAULT_MODEL,
     tags: []
   };
   
   await writeFile(join(projectDir, '.project.json'), JSON.stringify(config, null, 2));
   
   // 创建共享记忆
-  const sharedMemory = `# ${name} - 共享记忆
-
-## 项目目标
-
-
-## 架构设计
-
-
-## 关键决策
-
-
-## 通用知识
-
-`;
+  const sharedMemory = buildSharedMemoryTemplate(name);
   await writeFile(join(memoryDir, 'shared.md'), sharedMemory);
   
   // 创建任务文件
@@ -515,7 +513,7 @@ async function removeTask(taskId) {
 // 显示帮助
 function showHelp() {
   console.log(`
-${colors.cyan}📁 Project Workspace Manager${colors.reset}
+${colors.cyan}📁 OpenManager${colors.reset}
 
 ${colors.yellow}项目管理:${colors.reset}
   create <name> [desc]   创建新项目
@@ -536,7 +534,7 @@ ${colors.yellow}任务管理:${colors.reset}
   task complete <id>     完成任务
   task remove <id>       删除任务
 
-${colors.gray}工作目录：~/.openclaw/workspace/projects/${colors.reset}
+${colors.gray}工作目录：${PROJECTS_DIR}${colors.reset}
 `);
 }
 

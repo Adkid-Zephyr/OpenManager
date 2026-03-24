@@ -1,23 +1,84 @@
 import { existsSync, statSync } from 'fs';
-import { open as openFile, readFile } from 'fs/promises';
+import { mkdir, open as openFile, readFile } from 'fs/promises';
 import { exec, spawn } from 'child_process';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { promisify } from 'util';
-import { HOME_DIR, WORKSPACE_DIR } from '../context.js';
-import { getRecentSessionEntries, readSessionSummary } from '../lib/memory-store.js';
+import { DEFAULT_AGENT_ID, DEFAULT_MODEL, HOME_DIR, RUNTIME_DEFAULTS, WORKSPACE_DIR } from '../context.js';
+import {
+  appendSessionEntry,
+  getRecentSessionEntries,
+  readSessionFactsState,
+  readSessionHotState,
+  readSessionSummary
+} from '../lib/memory-store.js';
 
 const execAsync = promisify(exec);
 
 const CONTEXT_LIMITS = {
-  sharedFirstTurn: 1200,
-  sharedFollowup: 420,
-  summaryFirstTurn: 1000,
-  summaryFollowup: 360
+  sharedFirstTurn: 600,
+  sharedFollowup: 320,
+  summaryFirstTurn: 480,
+  summaryFollowup: 260
 };
 const CHAT_RUN_TTL_MS = 10 * 60 * 1000;
 const CHAT_RUN_MAX_EVENTS = 160;
+const LOCAL_CODEX_RUNNER_DIR = join(WORKSPACE_DIR, '.openmanager-codex-runner');
 const activeChatRuns = new Map();
+const activeSessionRuns = new Map();
 let chatRunSeed = 0;
+
+function getSessionRunKey(project, session) {
+  return `${project || '__default__'}::${session || '__none__'}`;
+}
+
+function normalizeWorkspaceMode(projectConfig, projectPath) {
+  if (projectConfig?.workspaceMode === 'main' || projectConfig?.workspaceMode === 'project' || projectConfig?.workspaceMode === 'custom') {
+    return projectConfig.workspaceMode;
+  }
+  if (projectConfig?.workspacePath && projectPath && projectConfig.workspacePath === projectPath) {
+    return 'project';
+  }
+  if (projectConfig?.workspacePath) {
+    return 'custom';
+  }
+  return 'main';
+}
+
+function resolveExecutionConfig(project, projectConfig) {
+  const projectPath = project ? join(WORKSPACE_DIR, 'projects', project) : null;
+  const runtime = projectConfig?.runtime === 'local' ? 'local' : 'gateway';
+  const workspaceMode = normalizeWorkspaceMode(projectConfig, projectPath);
+
+  let cwd = WORKSPACE_DIR;
+  if (workspaceMode === 'project' && projectPath) {
+    cwd = projectPath;
+  } else if (workspaceMode === 'custom' && projectConfig?.workspacePath) {
+    cwd = projectConfig.workspacePath;
+  }
+
+  return {
+    runtime,
+    workspaceMode,
+    cwd,
+    projectPath
+  };
+}
+
+async function readProjectConfig(project) {
+  if (!project) return null;
+
+  const configPath = join(WORKSPACE_DIR, 'projects', project, '.project.json');
+  if (!existsSync(configPath)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(await readFile(configPath, 'utf-8'));
+  } catch (error) {
+    console.error('[OpenClaw] Failed to read project config:', error.message);
+    return null;
+  }
+}
 
 function squeezeText(text, limit) {
   const normalized = String(text || '')
@@ -45,6 +106,32 @@ function isSimpleTurn(message) {
   if (/[\n`/\\]/.test(normalized)) return false;
 
   return /^(你好|您好|hi|hello|hey|在吗|收到|好的|ok|继续|继续吧|开始吧|开始|测试|test)[!！?？.。 ]*$/.test(normalized);
+}
+
+function isIdentityTurn(message) {
+  const normalized = String(message || '').trim().toLowerCase();
+  if (!normalized || normalized.length > 80) return false;
+
+  return /^(你是|你现在是|现在是|who are you|are you|main|dashboard|你用的是哪个agent|你是main还是dashboard agent)/i.test(normalized);
+}
+
+function isDirectActionTurn(message) {
+  const normalized = String(message || '').trim();
+  if (!normalized) return false;
+
+  if (/`[^`]+`/.test(normalized)) {
+    return true;
+  }
+
+  if (/(^|[\s(])(cat|ls|pwd|rg|grep|git|npm|pnpm|yarn|bun|node|python|pip|sed|awk|tail|head|mkdir|touch|cp|mv|find|curl|wget|ssh|docker|kubectl|open)(?=$|[\s)`])/i.test(normalized)) {
+    return true;
+  }
+
+  if (/(\/Users\/|~\/|\.\/|\.\.\/|[A-Za-z]:\\).+/.test(normalized)) {
+    return true;
+  }
+
+  return /(读取|查看|打开|搜索|查找|编辑|修改|创建|删除|运行|执行|安装|修复|测试|读一下|看一下|查一下|read|open|edit|write|fix|run|install|test|search|find)/i.test(normalized);
 }
 
 function formatRecentEntries(entries, currentMessage) {
@@ -79,6 +166,37 @@ function formatRecentEntries(entries, currentMessage) {
       const role = roleMap[entry.type] || entry.type || '记录';
       return `[${role}] ${entry.text || ''}`;
     })
+    .join('\n');
+}
+
+function formatHotState(hot) {
+  if (!hot || typeof hot !== 'object') {
+    return '';
+  }
+
+  const lines = [];
+  if (hot.goal) lines.push(`- 当前目标：${trimText(hot.goal, 200)}`);
+  if (hot.latestDecision) lines.push(`- 最近结论：${trimText(hot.latestDecision, 200)}`);
+  if (hot.blocker) lines.push(`- 当前阻塞：${trimText(hot.blocker, 180)}`);
+  if (hot.nextStep) lines.push(`- 下一步：${trimText(hot.nextStep, 180)}`);
+  return lines.join('\n');
+}
+
+function formatFactsState(facts, limit = 6) {
+  const items = Array.isArray(facts?.items) ? facts.items.slice(-limit) : [];
+  if (items.length === 0) {
+    return '';
+  }
+
+  const labels = {
+    decision: '决策',
+    constraint: '约束',
+    todo: '待办',
+    preference: '偏好'
+  };
+
+  return items
+    .map((item) => `- [${labels[item.type] || item.type || '事实'}] ${trimText(item.text, 180)}`)
     .join('\n');
 }
 
@@ -121,9 +239,9 @@ async function readTaskSummary(projectPath, limit = 4) {
   }
 }
 
-async function buildContextualMessage(projectName, sessionId, currentMessage) {
+async function buildProjectContextNote(projectName, sessionId, currentMessage) {
   if (!projectName || !sessionId) {
-    return currentMessage;
+    return '';
   }
 
   const projectPath = join(WORKSPACE_DIR, 'projects', projectName);
@@ -131,35 +249,49 @@ async function buildContextualMessage(projectName, sessionId, currentMessage) {
   const recentEntries = await getRecentSessionEntries(projectPath, sessionId, 10);
   const priorEntries = stripCurrentUserEcho(recentEntries, currentMessage);
   const hasConversationHistory = priorEntries.some((entry) => ['user', 'assistant'].includes(entry.type));
-  const simpleTurn = hasConversationHistory && isSimpleTurn(currentMessage);
+  const simpleTurn = isSimpleTurn(currentMessage);
+  const identityTurn = isIdentityTurn(currentMessage);
+  const directActionTurn = isDirectActionTurn(currentMessage);
+
+  if (simpleTurn || identityTurn || directActionTurn) {
+    return '';
+  }
 
   const sections = [
-    '你在 OpenManager 的项目工作流中处理任务。',
     `项目：${projectName}`,
     `会话：${sessionId}`
   ];
 
-  if (!simpleTurn) {
-    const rawSharedMemory = existsSync(sharedPath) ? await readFile(sharedPath, 'utf-8') : '';
-    const sharedMemory = squeezeText(
-      rawSharedMemory,
-      hasConversationHistory ? CONTEXT_LIMITS.sharedFollowup : CONTEXT_LIMITS.sharedFirstTurn
-    );
-    if (sharedMemory) {
-      sections.push(`项目共享记忆：\n${sharedMemory}`);
-    }
+  const rawSharedMemory = existsSync(sharedPath) ? await readFile(sharedPath, 'utf-8') : '';
+  const sharedMemory = squeezeText(
+    rawSharedMemory,
+    hasConversationHistory ? CONTEXT_LIMITS.sharedFollowup : CONTEXT_LIMITS.sharedFirstTurn
+  );
+  if (sharedMemory) {
+    sections.push(`项目共享记忆：\n${sharedMemory}`);
+  }
 
-    const summary = squeezeText(
-      stripSummaryHeading(await readSessionSummary(projectPath, sessionId)),
-      hasConversationHistory ? CONTEXT_LIMITS.summaryFollowup : CONTEXT_LIMITS.summaryFirstTurn
-    );
-    if (summary && !/^暂无摘要/.test(summary)) {
-      sections.push(`当前会话摘要：\n${summary}`);
-    }
+  const hotState = await readSessionHotState(projectPath, sessionId);
+  const hotBlock = formatHotState(hotState);
+  if (hotBlock) {
+    sections.push(`当前工作记忆：\n${hotBlock}`);
+  }
 
-    if (!hasConversationHistory || /任务|待办|todo|计划|安排/.test(currentMessage)) {
-      sections.push(`当前未完成任务：\n${await readTaskSummary(projectPath, 4)}`);
-    }
+  const factsBlock = formatFactsState(await readSessionFactsState(projectPath, sessionId), 6);
+  if (factsBlock) {
+    sections.push(`关键事实：\n${factsBlock}`);
+  }
+
+  const summary = squeezeText(
+    stripSummaryHeading(await readSessionSummary(projectPath, sessionId)),
+    hasConversationHistory ? CONTEXT_LIMITS.summaryFollowup : CONTEXT_LIMITS.summaryFirstTurn
+  );
+  if (summary && !/^暂无摘要/.test(summary)) {
+    sections.push(`当前会话摘要：\n${summary}`);
+  }
+
+  if (!hasConversationHistory || /任务|待办|todo|计划|安排/.test(currentMessage)) {
+    sections.push(`当前未完成任务：\n${await readTaskSummary(projectPath, 4)}`);
   }
 
   const recentBlock = formatRecentEntries(recentEntries.slice(-6), currentMessage);
@@ -167,12 +299,102 @@ async function buildContextualMessage(projectName, sessionId, currentMessage) {
     sections.push(`最近对话：\n${recentBlock}`);
   }
 
-  sections.push(
-    `当前用户请求：\n${currentMessage}`,
-    '要求：优先依据当前项目上下文回答；需要工具或本地文件操作时直接执行；不要重复复述整段上下文。'
-  );
+  return sections.length > 2 ? sections.join('\n\n') : '';
+}
 
+function buildLocalCodexPrompt({ project, session, userMessage, projectCwd, contextNote }) {
+  const sections = [
+    '你在 OpenManager 中作为本地执行助手工作。',
+    `当前项目：${project}`,
+    `当前会话：${session}`,
+    `首选工作目录：${projectCwd}`,
+    '优先级：先处理用户当前请求，不要因为项目记忆而失语，也不要把注意力锁死在 memory 文件上。',
+    '执行规则：只有在确实需要时才读文件、跑命令、改代码；一旦涉及本地操作，就在相关目录真实执行，并以结果为准。'
+  ];
+
+  if (contextNote) {
+    sections.push(
+      '项目附加上下文（按需参考，可忽略；不能因此限制正常工具使用或文件访问）：',
+      contextNote
+    );
+  }
+
+  sections.push(`当前用户请求：\n${userMessage}`);
   return sections.join('\n\n');
+}
+
+function getLocalCodexAddDirs(executionConfig) {
+  return [...new Set([
+    executionConfig?.cwd,
+    executionConfig?.projectPath
+  ].filter(Boolean))];
+}
+
+function trimText(text, limit = 180) {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!value || value.length <= limit) {
+    return value;
+  }
+  return `${value.slice(0, limit - 1).trim()}…`;
+}
+
+function normalizeToolCalls(toolCalls = []) {
+  if (!Array.isArray(toolCalls)) {
+    return [];
+  }
+
+  return toolCalls.map((toolCall) => ({
+    name: toolCall?.name || toolCall?.tool || toolCall?.type || 'unknown',
+    args: toolCall?.args || toolCall?.parameters || toolCall?.changes || {}
+  }));
+}
+
+function normalizeAgentResponsePayload(payload, fallbackText = '') {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const result = payload.result && typeof payload.result === 'object' ? payload.result : payload;
+  const responseText = Array.isArray(result.payloads)
+    ? result.payloads.map((item) => item?.text).filter(Boolean).join('\n\n')
+    : '';
+  const response = responseText || result.response || result.message || fallbackText;
+
+  return {
+    response: String(response || '').trim() || fallbackText,
+    connected: true,
+    meta: result.meta || payload.meta || null,
+    toolCalls: normalizeToolCalls(result.toolCalls || payload.toolCalls || [])
+  };
+}
+
+function parseAgentJsonOutput(stdout) {
+  const trimmed = String(stdout || '').trim();
+  if (!trimmed) return null;
+
+  const candidates = [];
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    candidates.push(trimmed);
+  }
+
+  const broadMatch = trimmed.match(/\{[\s\S]*\}/);
+  if (broadMatch && !candidates.includes(broadMatch[0])) {
+    candidates.push(broadMatch[0]);
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      const normalized = normalizeAgentResponsePayload(parsed, trimmed);
+      if (normalized) {
+        return normalized;
+      }
+    } catch {
+      // keep trying the next candidate
+    }
+  }
+
+  return null;
 }
 
 function createChatRun(project, session, message) {
@@ -188,9 +410,16 @@ function createChatRun(project, session, message) {
     events: [],
     nextEventId: 1,
     done: false,
-    result: null
+    result: null,
+    persisted: false,
+    child: null,
+    childKillTimer: null,
+    control: {
+      cancelRequested: false
+    }
   };
   activeChatRuns.set(id, run);
+  activeSessionRuns.set(getSessionRunKey(project, session), id);
   return run;
 }
 
@@ -199,6 +428,10 @@ function pruneChatRuns() {
   for (const [id, run] of activeChatRuns.entries()) {
     if (now - run.updatedAt > CHAT_RUN_TTL_MS) {
       activeChatRuns.delete(id);
+      const sessionKey = getSessionRunKey(run.project, run.session);
+      if (activeSessionRuns.get(sessionKey) === id) {
+        activeSessionRuns.delete(sessionKey);
+      }
     }
   }
 }
@@ -219,9 +452,18 @@ function pushChatRunEvent(run, event) {
 function finishChatRun(run, result) {
   if (!run) return;
   run.updatedAt = Date.now();
-  run.status = result?.connected === false ? 'error' : 'completed';
+  run.status = result?.stopped
+    ? 'stopped'
+    : result?.connected === false
+      ? 'error'
+      : 'completed';
   run.done = true;
   run.result = result;
+  if (run.childKillTimer) {
+    clearTimeout(run.childKillTimer);
+    run.childKillTimer = null;
+  }
+  run.child = null;
 }
 
 function serializeChatRun(run, cursor = 0) {
@@ -229,6 +471,11 @@ function serializeChatRun(run, cursor = 0) {
     runId: run.id,
     status: run.status,
     done: run.done,
+    cancelRequested: Boolean(run.control?.cancelRequested),
+    project: run.project,
+    session: run.session,
+    createdAt: run.createdAt,
+    updatedAt: run.updatedAt,
     cursor: run.nextEventId - 1,
     events: run.events.filter((event) => event.id > cursor)
   };
@@ -238,6 +485,102 @@ function serializeChatRun(run, cursor = 0) {
   }
 
   return base;
+}
+
+function attachChatRunProcess(run, child) {
+  if (!run || !child) return;
+  run.child = child;
+  run.updatedAt = Date.now();
+}
+
+function requestChatRunStop(run) {
+  if (!run || run.done || run.control?.cancelRequested || !run.child) {
+    return false;
+  }
+
+  run.control.cancelRequested = true;
+  run.status = 'stopping';
+  run.updatedAt = Date.now();
+  pushChatRunEvent(run, {
+    type: 'phase',
+    phase: 'stopping',
+    label: '停止运行',
+    detail: '已发送停止请求，等待本地进程退出'
+  });
+
+  try {
+    run.child.kill('SIGTERM');
+  } catch {
+    return false;
+  }
+
+  run.childKillTimer = setTimeout(() => {
+    try {
+      run.child?.kill('SIGKILL');
+    } catch {
+      // ignore
+    }
+  }, 5000);
+
+  return true;
+}
+
+async function persistChatRunResult(run, result) {
+  if (!run?.project || !run?.session || run.persisted) {
+    return;
+  }
+
+  const projectPath = join(WORKSPACE_DIR, 'projects', run.project);
+  if (!existsSync(projectPath)) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const baseEntry = { runId: run.id, time: now };
+
+  if (result?.stopped) {
+    await appendSessionEntry(projectPath, run.session, {
+      ...baseEntry,
+      type: 'meta',
+      text: '⏹️ 当前运行已手动停止'
+    });
+    run.persisted = true;
+    return;
+  }
+
+  if (result?.connected === false) {
+    await appendSessionEntry(projectPath, run.session, {
+      ...baseEntry,
+      type: 'error',
+      text: result.response || 'OpenClaw 执行失败'
+    });
+    run.persisted = true;
+    return;
+  }
+
+  await appendSessionEntry(projectPath, run.session, {
+    ...baseEntry,
+    type: 'assistant',
+    text: result?.response || 'OpenClaw 已处理'
+  });
+
+  if (result?.meta) {
+    await appendSessionEntry(projectPath, run.session, {
+      ...baseEntry,
+      type: 'meta',
+      text: `⏱️ 耗时：${(result.meta.durationMs / 1000).toFixed(1)}s | 🤖 模型：${result.meta.agentMeta?.model || 'unknown'}`
+    });
+  }
+
+  if (Array.isArray(result?.toolCalls) && result.toolCalls.length > 0) {
+    await appendSessionEntry(projectPath, run.session, {
+      ...baseEntry,
+      type: 'tools',
+      text: `🔧 调用工具：${result.toolCalls.map((tool) => tool.name).join(', ')}`
+    });
+  }
+
+  run.persisted = true;
 }
 
 async function readLogDelta(path, offset) {
@@ -295,26 +638,8 @@ function maybePushToolEventFromText(text, seenToolEvents, onEvent) {
   });
 }
 
-async function runChatTurn({ project, session, message, onEvent = () => {} }) {
-  let projectConfig = null;
-
-  if (project) {
-    const configPath = join(WORKSPACE_DIR, 'projects', project, '.project.json');
-    if (existsSync(configPath)) {
-      try {
-        projectConfig = JSON.parse(await readFile(configPath, 'utf-8'));
-      } catch (error) {
-        console.error('[OpenClaw] Failed to read project config:', error.message);
-      }
-    }
-  }
-
-  console.log(
-    `[OpenClaw] Chat request: project=${project}, session=${session}, message=${message.substring(0, 50)}...`
-  );
-
+async function runOpenClawChatTurn({ project, session, contextualMessage, executionConfig, projectConfig, control, onProcess = () => {}, onEvent = () => {} }) {
   onEvent({ type: 'phase', phase: 'context', label: '准备上下文' });
-  const contextualMessage = await buildContextualMessage(project, session, message);
   onEvent({ type: 'phase', phase: 'thinking', label: 'thinking', detail: '等待 OpenClaw 返回结果' });
 
   return new Promise((resolve) => {
@@ -328,11 +653,12 @@ async function runChatTurn({ project, session, message, onEvent = () => {} }) {
       'openclaw',
       args,
       {
-        cwd: projectConfig?.workspacePath || WORKSPACE_DIR,
+        cwd: executionConfig.cwd,
         env: { ...process.env, HOME: HOME_DIR },
         stdio: ['ignore', 'pipe', 'pipe']
       }
     );
+    onProcess(child);
 
     let stdout = '';
     let stderr = '';
@@ -366,6 +692,11 @@ async function runChatTurn({ project, session, message, onEvent = () => {} }) {
         detail: '还在运行，可能正在推理、读文件或等待工具返回'
       });
     }, 1800);
+
+    onEvent({
+      type: 'note',
+      detail: `${projectConfig?.agentId ? `Agent ${projectConfig.agentId}` : '默认 main'} · ${executionConfig.cwd}`
+    });
 
     const logWatcher = setInterval(async () => {
       try {
@@ -421,6 +752,15 @@ async function runChatTurn({ project, session, message, onEvent = () => {} }) {
     child.on('close', (code) => {
       cleanup();
 
+      if (control?.cancelRequested) {
+        resolve({
+          response: '已停止当前运行。',
+          connected: false,
+          stopped: true
+        });
+        return;
+      }
+
       if (code !== 0 && !hasJsonResult && stderr.trim()) {
         resolve({
           response: `⚠️ OpenClaw 错误\n\n${stderr.trim()}\n\n排查步骤：\n1. 确认网关运行中：\`openclaw gateway status\`\n2. 检查模型配置：\`openclaw config get model\`\n3. 确保有可用的 API 密钥`,
@@ -431,34 +771,16 @@ async function runChatTurn({ project, session, message, onEvent = () => {} }) {
       }
 
       try {
-        const jsonMatch = stdout.match(/\{[\s\S]*"status"[\s\S]*\}/);
-        if (jsonMatch) {
-          const result = JSON.parse(jsonMatch[0]);
-          const response =
-            result.result?.payloads?.[0]?.text || result.response || result.message || stdout;
-          const toolCalls = [];
-
-          if (Array.isArray(result.result?.toolCalls)) {
-            result.result.toolCalls.forEach((toolCall) => {
-              const nextTool = {
-                name: toolCall.name || toolCall.tool || 'unknown',
-                args: toolCall.args || toolCall.parameters || {}
-              };
-              toolCalls.push(nextTool);
-              onEvent({
-                type: 'tool',
-                name: nextTool.name,
-                detail: Object.keys(nextTool.args || {}).slice(0, 3).join(', ')
-              });
+        const parsed = parseAgentJsonOutput(stdout);
+        if (parsed) {
+          parsed.toolCalls.forEach((toolCall) => {
+            onEvent({
+              type: 'tool',
+              name: toolCall.name,
+              detail: Object.keys(toolCall.args || {}).slice(0, 3).join(', ')
             });
-          }
-
-          resolve({
-            response,
-            connected: true,
-            meta: result.result?.meta,
-            toolCalls
           });
+          resolve(parsed);
           return;
         }
       } catch {
@@ -482,6 +804,257 @@ async function runChatTurn({ project, session, message, onEvent = () => {} }) {
   });
 }
 
+async function runCodexChatTurn({ project, session, message, contextNote, executionConfig, projectConfig, control, onProcess = () => {}, onEvent = () => {} }) {
+  onEvent({ type: 'phase', phase: 'context', label: '准备上下文' });
+  onEvent({ type: 'phase', phase: 'thinking', label: 'thinking', detail: '等待本地执行器返回结果' });
+
+  await mkdir(LOCAL_CODEX_RUNNER_DIR, { recursive: true });
+  const codexPrompt = buildLocalCodexPrompt({
+    project,
+    session,
+    userMessage: message,
+    projectCwd: executionConfig.cwd,
+    contextNote
+  });
+
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const args = [
+      'exec',
+      '-C',
+      LOCAL_CODEX_RUNNER_DIR,
+      '--skip-git-repo-check',
+      '--dangerously-bypass-approvals-and-sandbox',
+      '--json',
+      '--color',
+      'never',
+      '--ephemeral'
+    ];
+
+    getLocalCodexAddDirs(executionConfig).forEach((dir) => {
+      args.push('--add-dir', dir);
+    });
+
+    if (projectConfig?.model && /^(gpt|o[1345]|codex)/i.test(projectConfig.model)) {
+      args.push('-m', projectConfig.model);
+    }
+
+    args.push(codexPrompt);
+
+    const child = spawn(
+      'codex',
+      args,
+      {
+        cwd: LOCAL_CODEX_RUNNER_DIR,
+        env: { ...process.env, HOME: HOME_DIR },
+        stdio: ['ignore', 'pipe', 'pipe']
+      }
+    );
+    onProcess(child);
+
+    let stderr = '';
+    let stdoutBuffer = '';
+    let lastAgentMessage = '';
+    const toolCalls = [];
+    const seenToolDetails = new Set();
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      clearTimeout(waitingHintTimer);
+    };
+
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      cleanup();
+      resolve({
+        response:
+          '⚠️ 本地执行超时\n\n任务已提交，但本地执行器未在 120 秒内完成。请稍后重试，或切回 Gateway Agent。',
+        connected: false,
+        timedOut: true
+      });
+    }, 120000);
+
+    const waitingHintTimer = setTimeout(() => {
+      onEvent({
+        type: 'phase',
+        phase: 'waiting',
+        label: '等待模型',
+        detail: '还在运行，可能正在读写文件、执行命令或整理结果'
+      });
+    }, 1800);
+
+    onEvent({
+      type: 'note',
+      detail: `本地 Codex · ${executionConfig.cwd}`
+    });
+
+    const handleCodexEvent = (event) => {
+      if (!event || typeof event !== 'object') return;
+
+      if (event.type === 'item.completed' && event.item?.type === 'agent_message') {
+        lastAgentMessage = event.item.text || lastAgentMessage;
+        onEvent({
+          type: 'note',
+          detail: trimText(lastAgentMessage, 140)
+        });
+        return;
+      }
+
+      if (event.type === 'item.completed' && event.item?.type === 'file_change') {
+        (event.item.changes || []).forEach((change) => {
+          const detail = `${change.kind || 'change'}: ${basename(change.path || 'file')}`;
+          if (seenToolDetails.has(detail)) return;
+          seenToolDetails.add(detail);
+          toolCalls.push({
+            name: 'file_change',
+            args: {
+              path: change.path || '',
+              kind: change.kind || 'change'
+            }
+          });
+          onEvent({
+            type: 'tool',
+            name: 'file_change',
+            detail
+          });
+        });
+        return;
+      }
+
+      if (event.type === 'item.completed' && event.item?.type === 'shell_command') {
+        const detail = trimText(event.item.command || 'shell command', 140);
+        if (!seenToolDetails.has(detail)) {
+          seenToolDetails.add(detail);
+          toolCalls.push({
+            name: 'exec',
+            args: {
+              command: event.item.command || ''
+            }
+          });
+          onEvent({
+            type: 'tool',
+            name: 'exec',
+            detail
+          });
+        }
+      }
+    };
+
+    child.stdout.on('data', (data) => {
+      stdoutBuffer += data.toString();
+
+      const lines = stdoutBuffer.split(/\r?\n/);
+      stdoutBuffer = lines.pop() || '';
+
+      lines
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .forEach((line) => {
+          try {
+            handleCodexEvent(JSON.parse(line));
+          } catch {
+            // 忽略非 JSON 行，例如外部工具的 warning
+          }
+        });
+    });
+
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    child.on('close', (code) => {
+      cleanup();
+
+      const tail = stdoutBuffer.trim();
+      if (tail) {
+        try {
+          handleCodexEvent(JSON.parse(tail));
+        } catch {
+          // ignore trailing non-json
+        }
+      }
+
+      if (control?.cancelRequested) {
+        resolve({
+          response: '已停止当前运行。',
+          connected: false,
+          stopped: true,
+          toolCalls
+        });
+        return;
+      }
+
+      if (code !== 0) {
+        resolve({
+          response: `⚠️ 本地执行失败\n\n${stderr.trim() || 'Codex CLI 返回非 0 退出码。'}`,
+          connected: false,
+          error: stderr.trim() || `exit code ${code}`
+        });
+        return;
+      }
+
+      resolve({
+        response: lastAgentMessage || '本地执行已完成。',
+        connected: true,
+        meta: {
+          durationMs: Date.now() - startedAt,
+          agentMeta: {
+            provider: 'codex',
+            model: projectConfig?.model && /^(gpt|o[1345]|codex)/i.test(projectConfig.model)
+              ? projectConfig.model
+              : 'codex-local'
+          }
+        },
+        toolCalls
+      });
+    });
+
+    child.on('error', (error) => {
+      cleanup();
+      resolve({
+        response: `⚠️ 本地执行器启动失败\n\n${error.message}`,
+        connected: false,
+        error: error.message
+      });
+    });
+  });
+}
+
+async function runChatTurn({ project, session, message, control = { cancelRequested: false }, onProcess = () => {}, onEvent = () => {} }) {
+  const projectConfig = await readProjectConfig(project);
+  const executionConfig = resolveExecutionConfig(project, projectConfig);
+
+  console.log(
+    `[OpenClaw] Chat request: project=${project}, session=${session}, runtime=${executionConfig.runtime}, message=${message.substring(0, 50)}...`
+  );
+
+  if (executionConfig.runtime === 'local') {
+    const contextNote = await buildProjectContextNote(project, session, message);
+    return runCodexChatTurn({
+      project,
+      session,
+      message,
+      contextNote,
+      executionConfig,
+      projectConfig,
+      control,
+      onProcess,
+      onEvent
+    });
+  }
+
+  return runOpenClawChatTurn({
+    project,
+    session,
+    contextualMessage: message,
+    executionConfig,
+    projectConfig,
+    control,
+    onProcess,
+    onEvent
+  });
+}
+
 export const openclawRoutes = {
   'POST /api/openclaw/chat/start': async (body) => {
     const { project, session, message } = body;
@@ -497,20 +1070,46 @@ export const openclawRoutes = {
       project,
       session,
       message,
+      control: run.control,
+      onProcess: (child) => attachChatRunProcess(run, child),
       onEvent: (event) => pushChatRunEvent(run, event)
     })
-      .then((result) => {
+      .then(async (result) => {
+        await persistChatRunResult(run, result);
         finishChatRun(run, result);
       })
-      .catch((error) => {
-        finishChatRun(run, {
+      .catch(async (error) => {
+        const result = {
           response: `⚠️ OpenClaw 执行失败\n\n${error.message}`,
           connected: false,
           error: error.message
-        });
+        };
+        await persistChatRunResult(run, result);
+        finishChatRun(run, result);
       });
 
-    return { runId: run.id, status: run.status };
+    return { runId: run.id, status: run.status, createdAt: run.createdAt };
+  },
+
+  'GET /api/openclaw/chat/session/:sessionId': async (_body, params, query) => {
+    pruneChatRuns();
+    const project = query.project || '';
+    const runId = activeSessionRuns.get(getSessionRunKey(project, params.sessionId));
+
+    if (!runId) {
+      return { found: false };
+    }
+
+    const run = activeChatRuns.get(runId);
+    if (!run) {
+      return { found: false };
+    }
+
+    const cursor = Number(query.cursor || 0);
+    return {
+      found: true,
+      ...serializeChatRun(run, Number.isFinite(cursor) ? cursor : 0)
+    };
   },
 
   'GET /api/openclaw/chat/runs/:runId': async (_body, params, query) => {
@@ -524,9 +1123,30 @@ export const openclawRoutes = {
     return serializeChatRun(run, Number.isFinite(cursor) ? cursor : 0);
   },
 
+  'POST /api/openclaw/chat/runs/:runId/stop': async (_body, params) => {
+    pruneChatRuns();
+    const run = activeChatRuns.get(params.runId);
+    if (!run) {
+      throw new Error('运行不存在或已过期');
+    }
+
+    if (run.done) {
+      return { success: true, alreadyDone: true, status: run.status };
+    }
+
+    const success = requestChatRunStop(run);
+    return {
+      success,
+      status: run.status,
+      stopping: run.status === 'stopping'
+    };
+  },
+
   'POST /api/openclaw/chat': async (body) => {
     const { project, session, message } = body;
-    return runChatTurn({ project, session, message });
+    const result = await runChatTurn({ project, session, message });
+    await persistChatRunResult({ id: `direct-${Date.now()}`, project, session, persisted: false }, result);
+    return result;
   },
 
   'GET /api/openclaw/logs': async () => {
@@ -577,6 +1197,14 @@ export const openclawRoutes = {
     }
   },
 
+  'GET /api/openclaw/runtime': async () => ({
+    workspaceDir: WORKSPACE_DIR,
+    defaultAgentId: DEFAULT_AGENT_ID,
+    defaultAgentWorkspace: RUNTIME_DEFAULTS.defaultAgentWorkspace,
+    defaultModel: DEFAULT_MODEL,
+    source: RUNTIME_DEFAULTS.source
+  }),
+
   'GET /api/openclaw/models': async () => {
     try {
       const { stdout } = await execAsync('openclaw models list --json', {
@@ -591,7 +1219,8 @@ export const openclawRoutes = {
 
       return {
         count: models.length,
-        defaultModel: defaultModel?.name || null,
+        defaultModel: defaultModel?.key || defaultModel?.name || null,
+        defaultModelName: defaultModel?.name || null,
         models
       };
     } catch (error) {

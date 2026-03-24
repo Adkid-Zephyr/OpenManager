@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 
 import http from 'http';
-import { PORT, PROJECTS_DIR } from './context.js';
+import { existsSync } from 'fs';
+import { readFile } from 'fs/promises';
+import { extname, join, resolve } from 'path';
+import { fileURLToPath } from 'url';
+import { HOST, PORT, PROJECTS_DIR } from './context.js';
 import { fileRoutes } from './routes/files.js';
 import { openclawRoutes } from './routes/openclaw.js';
 import { projectRoutes } from './routes/projects.js';
@@ -9,6 +13,66 @@ import { sessionRoutes } from './routes/sessions.js';
 import { systemRoutes } from './routes/system.js';
 import { taskRoutes } from './routes/tasks.js';
 import { matchRoute, parseBody, parseQuery, sendJson } from './lib/router.js';
+
+const APP_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const STATIC_MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp'
+};
+
+const ALLOWED_API_ORIGINS = new Set([
+  `http://${HOST}:${PORT}`,
+  `http://127.0.0.1:${PORT}`,
+  `http://localhost:${PORT}`,
+  ...String(process.env.OPENMANAGER_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+]);
+
+function resolveStaticFile(reqUrl) {
+  const pathname = decodeURIComponent(reqUrl).split('?')[0];
+  if (pathname.startsWith('/api/')) {
+    return null;
+  }
+
+  const relativePath = pathname === '/' ? 'app.html' : pathname.replace(/^\/+/, '');
+  if (!relativePath || relativePath.includes('..')) {
+    return null;
+  }
+
+  const filePath = join(APP_ROOT, relativePath);
+  if (!filePath.startsWith(APP_ROOT) || !existsSync(filePath)) {
+    return null;
+  }
+
+  return filePath;
+}
+
+function applyApiCors(req, res) {
+  const origin = req.headers.origin;
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (!origin) {
+    return true;
+  }
+
+  if (ALLOWED_API_ORIGINS.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    return true;
+  }
+
+  return false;
+}
 
 const routes = {
   ...projectRoutes,
@@ -20,9 +84,14 @@ const routes = {
 };
 
 const server = http.createServer(async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  const isApiRequest = req.url?.startsWith('/api/');
+  if (isApiRequest) {
+    const corsAllowed = applyApiCors(req, res);
+    if (!corsAllowed) {
+      sendJson(res, 403, { error: 'Origin not allowed' });
+      return;
+    }
+  }
 
   if (req.method === 'OPTIONS') {
     res.writeHead(200);
@@ -30,14 +99,28 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.url === '/' && req.method === 'GET') {
+  if (req.url === '/api/health' && req.method === 'GET') {
     sendJson(res, 200, {
-      name: 'Project Workspace API',
+      name: 'OpenManager API',
       status: 'ok',
+      host: HOST,
       port: PORT,
       projectsDir: PROJECTS_DIR
     });
     return;
+  }
+
+  if (req.method === 'GET') {
+    const staticFile = resolveStaticFile(req.url);
+    if (staticFile) {
+      const ext = extname(staticFile).toLowerCase();
+      const content = await readFile(staticFile);
+      res.writeHead(200, {
+        'Content-Type': STATIC_MIME_TYPES[ext] || 'application/octet-stream'
+      });
+      res.end(content);
+      return;
+    }
   }
 
   const matched = matchRoute(routes, req);
@@ -73,9 +156,10 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`\n🚀 Project Workspace API running at http://localhost:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`\n🚀 OpenManager running at http://${HOST}:${PORT}`);
   console.log(`📁 Projects directory: ${PROJECTS_DIR}`);
-  console.log('🌐 Frontend entry: frontend/index.html or app.html');
+  console.log(`🌐 App: http://${HOST}:${PORT}/`);
+  console.log(`📘 Manual: http://${HOST}:${PORT}/manual.html`);
   console.log('\n按 Ctrl+C 停止服务器\n');
 });
