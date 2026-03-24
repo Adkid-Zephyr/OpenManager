@@ -21,6 +21,8 @@
 <p align="center">
   <a href="#in-one-minute"><strong>Deploy in 1 minute</strong></a> ·
   <a href="#one-click-prompt-for-openclaw"><strong>OpenClaw deploy prompt</strong></a> ·
+  <a href="./CONTRIBUTING.md"><strong>Contributing</strong></a> ·
+  <a href="./docs/frontend-architecture.md"><strong>Frontend architecture</strong></a> ·
   <a href="./README.zh-CN.md"><strong>中文说明</strong></a>
 </p>
 
@@ -149,6 +151,21 @@ I want to deploy OpenManager locally for daily OpenClaw use. Clone https://githu
 ## Screenshots
 
 More product screenshots are available in [`docs/screenshots/`](./docs/screenshots/).
+
+## Contributing
+
+If you want to help improve OpenManager, start here:
+
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md)
+- [`docs/project-map.md`](./docs/project-map.md)
+- [`docs/frontend-architecture.md`](./docs/frontend-architecture.md)
+- [`docs/regression-checklist.md`](./docs/regression-checklist.md)
+
+The current refactor direction is behavior-preserving:
+
+- keep the existing UI familiar
+- keep the existing interaction model familiar
+- improve maintainability underneath
 
 ## How It Works
 
@@ -340,7 +357,10 @@ Only do this when you understand the network exposure.
   Sync `frontend/*` to compatibility entry files in the repo root
 
 - `npm test`
-  Run a smoke test that boots the server and checks the health endpoint
+  Run the release-minimum verification suite: production build, smoke test, and browser regression coverage
+
+- `npm run regression`
+  Run the Playwright-based browser regression suite for composer behavior, upload preview, and run controls
 
 ## Repository Structure
 
@@ -376,6 +396,7 @@ openmanager/
 
 - [中文说明](./README.zh-CN.md)
 - [USER_GUIDE.md](./USER_GUIDE.md)
+- [Project Map](./docs/project-map.md)
 - [SEPARATION_NOTES.md](./SEPARATION_NOTES.md)
 - [SKILL.md](./SKILL.md)
 - [Release Notes v0.1.0](./docs/release-v0.1.0.md)

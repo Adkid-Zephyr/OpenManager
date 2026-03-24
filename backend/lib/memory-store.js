@@ -67,6 +67,40 @@ function normalizeRecentEntry(entry) {
   };
 }
 
+function isLowSignalAssistantText(text) {
+  const normalized = normalizeInlineText(text);
+  if (!normalized) {
+    return true;
+  }
+
+  if (/^刚才被旧会话.*不再给你播状态表/.test(normalized)) {
+    return true;
+  }
+
+  if (/^我是 .*?(不是 main|现在走的是|这个项目里的 .* 助手)/.test(normalized) || normalized === '我是 main。') {
+    return true;
+  }
+
+  if (/^在[，,].*直接说你要我做什么就行/.test(normalized)) {
+    return true;
+  }
+
+  if (/^能[。.]?.*直接给具体任务.*不再播状态表/.test(normalized)) {
+    return true;
+  }
+
+  return /(当前状态|状态确认|状态正常)/.test(normalized)
+    && /(待命中|有什么新指令吗|skills 已安装|任务列表|安装位置|任务已完成|待处理)/i.test(normalized);
+}
+
+function shouldIgnoreForDerivedMemory(entry) {
+  if (!entry || !['assistant', 'compressed_summary'].includes(entry.type)) {
+    return false;
+  }
+
+  return isLowSignalAssistantText(entry.text);
+}
+
 function extractTextSegments(text) {
   const value = String(text || '').replace(/\r/g, '');
   const lines = value
@@ -92,7 +126,7 @@ function buildHotState(entries) {
   const hot = createEmptyHotState();
   const relevant = entries.filter((entry) =>
     ['user', 'assistant', 'error', 'compressed_summary'].includes(entry?.type)
-  );
+  ).filter((entry) => !shouldIgnoreForDerivedMemory(entry));
 
   const latestUser = [...relevant].reverse().find((entry) => entry.type === 'user');
   const latestAssistant = [...relevant].reverse().find((entry) =>
@@ -168,6 +202,7 @@ function buildFactsState(entries) {
   const seen = new Set();
   const candidates = entries
     .filter((entry) => ['user', 'assistant', 'compressed_summary', 'error'].includes(entry?.type))
+    .filter((entry) => !shouldIgnoreForDerivedMemory(entry))
     .slice(-40);
 
   for (const entry of candidates) {

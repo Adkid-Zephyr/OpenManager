@@ -8,11 +8,15 @@
     "openmanager": "./cli.js"
   },
   "scripts": {
-    "start": "node server.js",
+    "build": "vite build && node scripts/sync-compat.mjs",
+    "start": "npm run build && node server.js",
     "dev": "node backend/server.js",
+    "dev:frontend": "vite",
+    "regression": "node scripts/regression.mjs",
     "sync:compat": "node scripts/sync-compat.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "test": "npm run smoke"
+    "test": "npm run build && npm run smoke && npm run regression",
+    "typecheck": "tsc --noEmit"
   },
   "engines": {
     "node": ">=20"
@@ -24,5 +28,10 @@
     "project-manager",
     "local-first"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "^1.58.2",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.5"
+  }
 }

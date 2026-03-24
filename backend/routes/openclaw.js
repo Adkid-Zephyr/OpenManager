@@ -1,5 +1,5 @@
 import { existsSync, statSync } from 'fs';
-import { mkdir, open as openFile, readFile } from 'fs/promises';
+import { mkdir, open as openFile, readFile, writeFile } from 'fs/promises';
 import { exec, spawn } from 'child_process';
 import { basename, join } from 'path';
 import { promisify } from 'util';
@@ -11,6 +11,12 @@ import {
   readSessionHotState,
   readSessionSummary
 } from '../lib/memory-store.js';
+import {
+  buildProjectAgentTemplate,
+  buildProjectBootstrapTemplate,
+  buildProjectIdentityTemplate,
+  PROJECT_BOOTSTRAP_MARKER
+} from '../lib/project-template.js';
 
 const execAsync = promisify(exec);
 
@@ -64,6 +70,21 @@ function resolveExecutionConfig(project, projectConfig) {
   };
 }
 
+function resolveGatewayAgentId(projectConfig) {
+  const configuredAgentId = projectConfig?.agentId || DEFAULT_AGENT_ID || null;
+  if (!configuredAgentId) {
+    return null;
+  }
+
+  if (configuredAgentId.endsWith('-gw')) {
+    return configuredAgentId;
+  }
+
+  const gatewayCandidate = `${configuredAgentId}-gw`;
+  const gatewayAgentDir = join(HOME_DIR, '.openclaw', 'agents', gatewayCandidate, 'agent');
+  return existsSync(gatewayAgentDir) ? gatewayCandidate : configuredAgentId;
+}
+
 async function readProjectConfig(project) {
   if (!project) return null;
 
@@ -77,6 +98,43 @@ async function readProjectConfig(project) {
   } catch (error) {
     console.error('[OpenClaw] Failed to read project config:', error.message);
     return null;
+  }
+}
+
+function shouldRefreshProjectAgentsFile(content) {
+  const value = String(content || '');
+  return !value || value.includes(PROJECT_BOOTSTRAP_MARKER) || value.startsWith('# AGENTS.md - Your Workspace');
+}
+
+function shouldRefreshProjectIdentityFile(content) {
+  const value = String(content || '');
+  return !value || value.includes(PROJECT_BOOTSTRAP_MARKER);
+}
+
+async function ensureProjectBootstrapFiles(project, projectConfig) {
+  if (!project) return;
+
+  const projectPath = join(WORKSPACE_DIR, 'projects', project);
+  if (!existsSync(projectPath)) return;
+
+  const agentId = projectConfig?.agentId || null;
+  const agentsPath = join(projectPath, 'AGENTS.md');
+  const bootstrapPath = join(projectPath, 'BOOTSTRAP.md');
+  const identityPath = join(projectPath, 'IDENTITY.md');
+
+  const currentAgents = existsSync(agentsPath) ? await readFile(agentsPath, 'utf-8') : '';
+  if (shouldRefreshProjectAgentsFile(currentAgents)) {
+    await writeFile(agentsPath, buildProjectAgentTemplate(project, agentId));
+  }
+
+  const currentBootstrap = existsSync(bootstrapPath) ? await readFile(bootstrapPath, 'utf-8') : '';
+  if (!currentBootstrap || currentBootstrap.includes(PROJECT_BOOTSTRAP_MARKER)) {
+    await writeFile(bootstrapPath, buildProjectBootstrapTemplate(project));
+  }
+
+  const currentIdentity = existsSync(identityPath) ? await readFile(identityPath, 'utf-8') : '';
+  if (shouldRefreshProjectIdentityFile(currentIdentity)) {
+    await writeFile(identityPath, buildProjectIdentityTemplate(project, agentId));
   }
 }
 
@@ -113,6 +171,37 @@ function isIdentityTurn(message) {
   if (!normalized || normalized.length > 80) return false;
 
   return /^(你是|你现在是|现在是|who are you|are you|main|dashboard|你用的是哪个agent|你是main还是dashboard agent)/i.test(normalized);
+}
+
+function isPresenceTurn(message) {
+  const normalized = String(message || '').trim().toLowerCase();
+  if (!normalized || normalized.length > 80) return false;
+
+  return /^(你在干嘛|你在做什么|在干嘛|忙什么|忙啥|在吗|在不在|在嘛|你还在吗)/i.test(normalized);
+}
+
+function isStyleRepairTurn(message) {
+  const normalized = String(message || '').trim().toLowerCase();
+  if (!normalized || normalized.length > 120) return false;
+
+  return /(好好说话|正常说话|说人话|别.*(官方|汇报|状态|表格|清单)|不会好好说话|别待命|自然一点|口语一点)/i.test(normalized);
+}
+
+function isCapabilityCheckTurn(message) {
+  const normalized = String(message || '').trim().toLowerCase();
+  if (!normalized || normalized.length > 120) return false;
+
+  return /(能正常工作吗|能正常干活吗|能工作吗|能干活吗|可以正常工作吗|现在能正常工作吗|现在可以工作吗|能不能正常工作|你能做事吗|你能干活吗|能好好工作吗)/i.test(normalized);
+}
+
+function isMetaConversationTurn(message) {
+  return (
+    isSimpleTurn(message) ||
+    isIdentityTurn(message) ||
+    isPresenceTurn(message) ||
+    isStyleRepairTurn(message) ||
+    isCapabilityCheckTurn(message)
+  );
 }
 
 function isDirectActionTurn(message) {
@@ -251,9 +340,12 @@ async function buildProjectContextNote(projectName, sessionId, currentMessage) {
   const hasConversationHistory = priorEntries.some((entry) => ['user', 'assistant'].includes(entry.type));
   const simpleTurn = isSimpleTurn(currentMessage);
   const identityTurn = isIdentityTurn(currentMessage);
+  const presenceTurn = isPresenceTurn(currentMessage);
+  const styleRepairTurn = isStyleRepairTurn(currentMessage);
+  const capabilityCheckTurn = isCapabilityCheckTurn(currentMessage);
   const directActionTurn = isDirectActionTurn(currentMessage);
 
-  if (simpleTurn || identityTurn || directActionTurn) {
+  if (simpleTurn || identityTurn || presenceTurn || styleRepairTurn || capabilityCheckTurn || directActionTurn) {
     return '';
   }
 
@@ -300,6 +392,106 @@ async function buildProjectContextNote(projectName, sessionId, currentMessage) {
   }
 
   return sections.length > 2 ? sections.join('\n\n') : '';
+}
+
+function buildFastPathChatResponse({ project, projectConfig, executionConfig, message }) {
+  const text = String(message || '').trim();
+  const normalized = text.toLowerCase();
+  const projectLabel = project || '当前项目';
+  const agentId = projectConfig?.agentId || DEFAULT_AGENT_ID || 'main';
+  const runtimeLabel = executionConfig?.runtime === 'local' ? '本地 Codex' : 'Gateway Agent';
+  const isMainAgent = agentId === 'main';
+
+  if (isStyleRepairTurn(text)) {
+    return {
+      response: '刚才被旧会话里的状态总结口吻带偏了。后面我直接正常说话，不再给你播状态表。',
+      connected: true,
+      meta: {
+        durationMs: 0,
+        agentMeta: {
+          provider: 'openmanager',
+          model: 'fast-path'
+        }
+      },
+      toolCalls: []
+    };
+  }
+
+  if (isCapabilityCheckTurn(text)) {
+    return {
+      response: '能。你直接给具体任务，我会直接做，不再播状态表。',
+      connected: true,
+      meta: {
+        durationMs: 0,
+        agentMeta: {
+          provider: 'openmanager',
+          model: 'fast-path'
+        }
+      },
+      toolCalls: []
+    };
+  }
+
+  if (isIdentityTurn(text)) {
+    if (/main.*dashboard|dashboard.*main|哪个agent|which agent/.test(normalized)) {
+      return {
+        response: isMainAgent ? '我是 main。' : `我是 ${agentId}，不是 main。`,
+        connected: true,
+        meta: {
+          durationMs: 0,
+          agentMeta: {
+            provider: 'openmanager',
+            model: 'fast-path'
+          }
+        },
+        toolCalls: []
+      };
+    }
+
+    return {
+      response: `我是 ${projectLabel} 这个项目里的 ${agentId} 助手，现在走的是 ${runtimeLabel}。`,
+      connected: true,
+      meta: {
+        durationMs: 0,
+        agentMeta: {
+          provider: 'openmanager',
+          model: 'fast-path'
+        }
+      },
+      toolCalls: []
+    };
+  }
+
+  if (isPresenceTurn(text) || isSimpleTurn(text)) {
+    return {
+      response: isPresenceTurn(text)
+        ? `在，我在 ${projectLabel} 里，直接说你要我做什么就行。`
+        : '在，你直接说要我做什么就行。',
+      connected: true,
+      meta: {
+        durationMs: 0,
+        agentMeta: {
+          provider: 'openmanager',
+          model: 'fast-path'
+        }
+      },
+      toolCalls: []
+    };
+  }
+
+  return null;
+}
+
+function shouldSkipSessionPersistence(run, result) {
+  if (!run?.message) {
+    return false;
+  }
+
+  if (isMetaConversationTurn(run.message)) {
+    return true;
+  }
+
+  return result?.meta?.agentMeta?.provider === 'openmanager' && result?.meta?.agentMeta?.model === 'fast-path';
 }
 
 function buildLocalCodexPrompt({ project, session, userMessage, projectCwd, contextNote }) {
@@ -530,6 +722,11 @@ async function persistChatRunResult(run, result) {
     return;
   }
 
+  if (shouldSkipSessionPersistence(run, result)) {
+    run.persisted = true;
+    return;
+  }
+
   const projectPath = join(WORKSPACE_DIR, 'projects', run.project);
   if (!existsSync(projectPath)) {
     return;
@@ -644,8 +841,9 @@ async function runOpenClawChatTurn({ project, session, contextualMessage, execut
 
   return new Promise((resolve) => {
     const args = ['agent'];
-    if (projectConfig?.agentId) {
-      args.push('--agent', projectConfig.agentId);
+    const runtimeAgentId = resolveGatewayAgentId(projectConfig);
+    if (runtimeAgentId) {
+      args.push('--agent', runtimeAgentId);
     }
     args.push('--session-id', session, '--message', contextualMessage, '--json', '--thinking', 'off');
 
@@ -695,7 +893,7 @@ async function runOpenClawChatTurn({ project, session, contextualMessage, execut
 
     onEvent({
       type: 'note',
-      detail: `${projectConfig?.agentId ? `Agent ${projectConfig.agentId}` : '默认 main'} · ${executionConfig.cwd}`
+      detail: `${runtimeAgentId ? `Agent ${runtimeAgentId}` : '默认 main'} · ${executionConfig.cwd}`
     });
 
     const logWatcher = setInterval(async () => {
@@ -1023,10 +1221,23 @@ async function runCodexChatTurn({ project, session, message, contextNote, execut
 async function runChatTurn({ project, session, message, control = { cancelRequested: false }, onProcess = () => {}, onEvent = () => {} }) {
   const projectConfig = await readProjectConfig(project);
   const executionConfig = resolveExecutionConfig(project, projectConfig);
+  await ensureProjectBootstrapFiles(project, projectConfig);
 
   console.log(
     `[OpenClaw] Chat request: project=${project}, session=${session}, runtime=${executionConfig.runtime}, message=${message.substring(0, 50)}...`
   );
+
+  const fastPathResult = buildFastPathChatResponse({
+    project,
+    projectConfig,
+    executionConfig,
+    message
+  });
+  if (fastPathResult) {
+    onEvent({ type: 'phase', phase: 'context', label: '准备上下文' });
+    onEvent({ type: 'phase', phase: 'ready', label: '快速响应', detail: '使用轻量直返逻辑，避免旧会话口吻污染' });
+    return fastPathResult;
+  }
 
   if (executionConfig.runtime === 'local') {
     const contextNote = await buildProjectContextNote(project, session, message);
@@ -1145,7 +1356,7 @@ export const openclawRoutes = {
   'POST /api/openclaw/chat': async (body) => {
     const { project, session, message } = body;
     const result = await runChatTurn({ project, session, message });
-    await persistChatRunResult({ id: `direct-${Date.now()}`, project, session, persisted: false }, result);
+    await persistChatRunResult({ id: `direct-${Date.now()}`, project, session, message, persisted: false }, result);
     return result;
   },
 

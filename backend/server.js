@@ -15,6 +15,7 @@ import { taskRoutes } from './routes/tasks.js';
 import { matchRoute, parseBody, parseQuery, sendJson } from './lib/router.js';
 
 const APP_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const DIST_ROOT = resolve(APP_ROOT, 'dist');
 const STATIC_MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -37,6 +38,15 @@ const ALLOWED_API_ORIGINS = new Set([
     .filter(Boolean)
 ]);
 
+function resolveStaticFileFromRoot(rootDir, relativePath) {
+  const filePath = join(rootDir, relativePath);
+  if (!filePath.startsWith(rootDir) || !existsSync(filePath)) {
+    return null;
+  }
+
+  return filePath;
+}
+
 function resolveStaticFile(reqUrl) {
   const pathname = decodeURIComponent(reqUrl).split('?')[0];
   if (pathname.startsWith('/api/')) {
@@ -48,12 +58,14 @@ function resolveStaticFile(reqUrl) {
     return null;
   }
 
-  const filePath = join(APP_ROOT, relativePath);
-  if (!filePath.startsWith(APP_ROOT) || !existsSync(filePath)) {
-    return null;
+  for (const rootDir of [DIST_ROOT, APP_ROOT]) {
+    const filePath = resolveStaticFileFromRoot(rootDir, relativePath);
+    if (filePath) {
+      return filePath;
+    }
   }
 
-  return filePath;
+  return null;
 }
 
 function applyApiCors(req, res) {
