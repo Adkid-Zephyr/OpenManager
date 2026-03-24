@@ -13,6 +13,7 @@
     "dev": "node backend/server.js",
     "dev:frontend": "vite",
     "regression": "node scripts/regression.mjs",
+    "screenshot:overview": "node scripts/capture-overview-screenshot.mjs",
     "sync:compat": "node scripts/sync-compat.mjs",
     "smoke": "node scripts/smoke.mjs",
     "test": "npm run build && npm run smoke && npm run regression",

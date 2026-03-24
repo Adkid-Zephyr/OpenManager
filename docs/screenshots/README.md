@@ -9,3 +9,9 @@ Recommended files:
 - `session-chat.png`
 - `memory-panel.png`
 - `cron-or-skills.png`
+
+Generate the README overview screenshot with:
+
+```bash
+npm run screenshot:overview
+```

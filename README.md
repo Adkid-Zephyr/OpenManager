@@ -38,7 +38,7 @@ It gives OpenClaw users a durable project layer on top of normal chat:
 If you often work across multiple projects, return to the same context over many days, or hate re-explaining background every time you continue, OpenManager is built for that.
 
 <p align="center">
-  <img src="./docs/screenshots/guide-memory-focus.png" alt="OpenManager overview" width="100%">
+  <img src="./docs/screenshots/overview.png" alt="OpenManager overview" width="100%">
 </p>
 
 ## Why OpenManager
