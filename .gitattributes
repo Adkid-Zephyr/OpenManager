@@ -1,0 +1,6 @@
+# Generated compatibility outputs should not dominate GitHub language stats.
+dist/** linguist-generated=true
+app.html linguist-generated=true
+api.js linguist-generated=true
+manual.html linguist-generated=true
+frontend/api.js linguist-generated=true

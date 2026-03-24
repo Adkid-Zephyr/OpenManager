@@ -7,8 +7,8 @@
 </p>
 
 <p align="center">
-  <img alt="release" src="https://img.shields.io/github/v/release/Adkid-Zephyr/OpenManager?display_name=tag&style=flat-square">
-  <img alt="license" src="https://img.shields.io/github/license/Adkid-Zephyr/OpenManager?style=flat-square">
+  <img alt="release" src="https://img.shields.io/github/v/release/Adkid-Zephyr/OpenManager-next?display_name=tag&style=flat-square">
+  <img alt="license" src="https://img.shields.io/github/license/Adkid-Zephyr/OpenManager-next?style=flat-square">
   <img alt="node" src="https://img.shields.io/badge/node-20%2B-1F7A5A?style=flat-square">
   <img alt="local first" src="https://img.shields.io/badge/local--first-yes-1B2F78?style=flat-square">
   <img alt="openclaw" src="https://img.shields.io/badge/OpenClaw-integrated-2347D3?style=flat-square">
@@ -21,6 +21,7 @@
 <p align="center">
   <a href="#in-one-minute"><strong>Deploy in 1 minute</strong></a> ·
   <a href="#one-click-prompt-for-openclaw"><strong>OpenClaw deploy prompt</strong></a> ·
+  <a href="https://github.com/Adkid-Zephyr/OpenManager-next"><strong>GitHub</strong></a> ·
   <a href="./CONTRIBUTING.md"><strong>Contributing</strong></a> ·
   <a href="./docs/frontend-architecture.md"><strong>Frontend architecture</strong></a> ·
   <a href="./README.zh-CN.md"><strong>中文说明</strong></a>
@@ -65,8 +66,8 @@ That model is a good fit when you are:
 ### Start locally
 
 ```bash
-git clone https://github.com/Adkid-Zephyr/OpenManager.git
-cd OpenManager
+git clone https://github.com/Adkid-Zephyr/OpenManager-next.git
+cd OpenManager-next
 npm install
 npm start
 ```
@@ -95,13 +96,13 @@ http://127.0.0.1:3456/manual.html
 If you want OpenClaw, Codex, or another coding agent to deploy this project for you, give it this prompt:
 
 ```text
-Clone https://github.com/Adkid-Zephyr/OpenManager.git, install dependencies, start the local server, verify http://127.0.0.1:3456/ and http://127.0.0.1:3456/manual.html both load, then tell me how to keep it running and how to reopen it later.
+Clone https://github.com/Adkid-Zephyr/OpenManager-next.git, install dependencies, start the local server, verify http://127.0.0.1:3456/ and http://127.0.0.1:3456/manual.html both load, then tell me how to keep it running and how to reopen it later.
 ```
 
 If you want a more guided setup, use this version:
 
 ```text
-I want to deploy OpenManager locally for daily OpenClaw use. Clone https://github.com/Adkid-Zephyr/OpenManager.git, check that OpenClaw is available in my shell, install dependencies, start the app, verify the UI and manual page both load, explain where runtime data will be stored, and give me the exact command to start it again next time.
+I want to deploy OpenManager locally for daily OpenClaw use. Clone https://github.com/Adkid-Zephyr/OpenManager-next.git, check that OpenClaw is available in my shell, install dependencies, start the app, verify the UI and manual page both load, explain where runtime data will be stored, and give me the exact command to start it again next time.
 ```
 
 ## What You Get
@@ -211,8 +212,6 @@ flowchart TD
   G --> H["Assistant reply"]
   H --> I["Session memory updated"]
 ```
-
-## What You Get
 
 ## Recommended User Flow
 

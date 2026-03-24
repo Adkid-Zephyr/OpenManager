@@ -7,8 +7,8 @@
 </p>
 
 <p align="center">
-  <img alt="release" src="https://img.shields.io/github/v/release/Adkid-Zephyr/OpenManager?display_name=tag&style=flat-square">
-  <img alt="license" src="https://img.shields.io/github/license/Adkid-Zephyr/OpenManager?style=flat-square">
+  <img alt="release" src="https://img.shields.io/github/v/release/Adkid-Zephyr/OpenManager-next?display_name=tag&style=flat-square">
+  <img alt="license" src="https://img.shields.io/github/license/Adkid-Zephyr/OpenManager-next?style=flat-square">
   <img alt="node" src="https://img.shields.io/badge/node-20%2B-1F7A5A?style=flat-square">
   <img alt="local first" src="https://img.shields.io/badge/local--first-yes-1B2F78?style=flat-square">
   <img alt="openclaw" src="https://img.shields.io/badge/OpenClaw-integrated-2347D3?style=flat-square">
@@ -21,6 +21,7 @@
 <p align="center">
   <a href="#一分钟部署"><strong>一分钟部署</strong></a> ·
   <a href="#给-openclaw-的一键部署-prompt"><strong>OpenClaw 一键部署</strong></a> ·
+  <a href="https://github.com/Adkid-Zephyr/OpenManager-next"><strong>GitHub</strong></a> ·
   <a href="./README.md"><strong>English README</strong></a>
 </p>
 
@@ -63,8 +64,8 @@ OpenManager 把：
 ### 本地启动
 
 ```bash
-git clone https://github.com/Adkid-Zephyr/OpenManager.git
-cd OpenManager
+git clone https://github.com/Adkid-Zephyr/OpenManager-next.git
+cd OpenManager-next
 npm install
 npm start
 ```
@@ -93,13 +94,13 @@ http://127.0.0.1:3456/manual.html
 如果你想直接让 OpenClaw、Codex 或其他编码 agent 帮你把这个项目部署好，直接给它这段提示词：
 
 ```text
-帮我克隆 https://github.com/Adkid-Zephyr/OpenManager.git，安装依赖，启动本地服务，验证 http://127.0.0.1:3456/ 和 http://127.0.0.1:3456/manual.html 都能正常打开，然后告诉我如何保持后台运行，以及下次如何重新打开。
+帮我克隆 https://github.com/Adkid-Zephyr/OpenManager-next.git，安装依赖，启动本地服务，验证 http://127.0.0.1:3456/ 和 http://127.0.0.1:3456/manual.html 都能正常打开，然后告诉我如何保持后台运行，以及下次如何重新打开。
 ```
 
 如果你希望它解释得更完整，可以用这版：
 
 ```text
-我要把 OpenManager 部署成本地日常使用的 OpenClaw 项目工作台。请帮我克隆 https://github.com/Adkid-Zephyr/OpenManager.git，确认 OpenClaw 在当前 shell 可用，安装依赖，启动应用，验证 UI 和手册页都能打开，说明运行数据会写到哪里，并告诉我下次重新启动的准确命令。
+我要把 OpenManager 部署成本地日常使用的 OpenClaw 项目工作台。请帮我克隆 https://github.com/Adkid-Zephyr/OpenManager-next.git，确认 OpenClaw 在当前 shell 可用，安装依赖，启动应用，验证 UI 和手册页都能打开，说明运行数据会写到哪里，并告诉我下次重新启动的准确命令。
 ```
 
 ## 你能得到什么

@@ -53,15 +53,35 @@ function resolveStaticFile(reqUrl) {
     return null;
   }
 
-  const relativePath = pathname === '/' ? 'app.html' : pathname.replace(/^\/+/, '');
-  if (!relativePath || relativePath.includes('..')) {
-    return null;
+  let relativePaths = [];
+  if (pathname === '/') {
+    relativePaths = [
+      'dist/frontend/index.html',
+      'frontend/index.html',
+      'dist/app.html',
+      'app.html'
+    ];
+  } else if (pathname === '/manual.html') {
+    relativePaths = [
+      'dist/frontend/manual.html',
+      'frontend/manual.html',
+      'dist/manual.html',
+      'manual.html'
+    ];
+  } else {
+    const relativePath = pathname.replace(/^\/+/, '');
+    if (!relativePath || relativePath.includes('..')) {
+      return null;
+    }
+    relativePaths = [relativePath];
   }
 
-  for (const rootDir of [DIST_ROOT, APP_ROOT]) {
-    const filePath = resolveStaticFileFromRoot(rootDir, relativePath);
-    if (filePath) {
-      return filePath;
+  for (const relativePath of relativePaths) {
+    for (const rootDir of [APP_ROOT, DIST_ROOT]) {
+      const filePath = resolveStaticFileFromRoot(rootDir, relativePath);
+      if (filePath) {
+        return filePath;
+      }
     }
   }
 
@@ -122,7 +142,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'GET') {
+  if (req.method === 'GET' || req.method === 'HEAD') {
     const staticFile = resolveStaticFile(req.url);
     if (staticFile) {
       const ext = extname(staticFile).toLowerCase();
@@ -130,7 +150,11 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, {
         'Content-Type': STATIC_MIME_TYPES[ext] || 'application/octet-stream'
       });
-      res.end(content);
+      if (req.method === 'HEAD') {
+        res.end();
+      } else {
+        res.end(content);
+      }
       return;
     }
   }
