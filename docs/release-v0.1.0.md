@@ -30,8 +30,8 @@ First public release of OpenManager.
 ### Quick start
 
 ```bash
-git clone https://github.com/Adkid-Zephyr/OpenManager-next.git
-cd OpenManager-next
+git clone https://github.com/Adkid-Zephyr/OpenManager.git
+cd OpenManager
 npm install
 npm start
 ```
@@ -51,7 +51,7 @@ http://127.0.0.1:3456/manual.html
 ### One-click prompt for OpenClaw
 
 ```text
-Clone https://github.com/Adkid-Zephyr/OpenManager-next.git, install dependencies, start the local server, verify http://127.0.0.1:3456/ and http://127.0.0.1:3456/manual.html both load, then tell me how to keep it running and how to reopen it later.
+Clone https://github.com/Adkid-Zephyr/OpenManager.git, install dependencies, start the local server, verify http://127.0.0.1:3456/ and http://127.0.0.1:3456/manual.html both load, then tell me how to keep it running and how to reopen it later.
 ```
 
 ## Known Limitations
